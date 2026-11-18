@@ -1,0 +1,385 @@
+{
+  "id": "invChaserDaily01",
+  "name": "Invoice Chaser · 1 Daily chaser",
+  "active": false,
+  "nodes": [
+    {
+      "name": "Every day 9:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        }
+      },
+      "id": "ed355e73-793d-454d-99af-d3bc60c4ef3b"
+    },
+    {
+      "name": "Run now (from dashboard)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        200
+      ],
+      "webhookId": "6a1f2c3d-4b5e-4f60-8a71-92b3c4d5e601",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "invoice-chaser-run",
+        "responseMode": "lastNode",
+        "options": {},
+        "responseData": "firstEntryJson"
+      },
+      "id": "fe02c9d2-3fba-455a-a8fb-341b0908a090"
+    },
+    {
+      "name": "Get invoices",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        0
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Invoices"
+        },
+        "matchType": "anyCondition",
+        "filters": {},
+        "returnAll": true
+      },
+      "id": "9b24857a-f1b4-4371-a29e-6a7063b0cfe1"
+    },
+    {
+      "name": "Pick invoices to chase",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Northlight Studio\",\"ownerName\":\"Sam\",\"mailbox\":\"billing@northlight.studio\",\"emailMode\":\"demo\",\"testMode\":true,\"currency\":\"USD\",\"paymentLink\":\"https://pay.northlight.studio/invoices\",\"claudeModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst isDate = (s) => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(s || ''));\nconst toUTC = (s) => { const [y, m, d] = String(s).split('-').map(Number); return Date.UTC(y, m - 1, d); };\nconst addDays = (s, n) => new Date(toUTC(s) + n * 86400000).toISOString().slice(0, 10);\nconst daysBetween = (a, b) => Math.round((toUTC(b) - toUTC(a)) / 86400000); // b - a\nconst weekday = (s) => DAYS[new Date(toUTC(s)).getUTCDay()];\nconst fmtDate = (s) => (isDate(s) ? `${MONTHS[Number(s.slice(5, 7)) - 1]} ${Number(s.slice(8, 10))}` : '');\nconst money = (n, cur) => {\n  const v = Number(n) || 0;\n  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur || CFG.currency, maximumFractionDigits: 0 }).format(v); }\n  catch { return '$' + Math.round(v).toLocaleString('en-US'); }\n};\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst slug = (s) => String(s || 'client').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'client';\n// emailMode \"demo\": nothing leaves the machine, emails land in the Mailbox table, so real addresses are shown.\n// emailMode \"real\" + testMode: every client email goes to a plus-address of your own inbox (you+acmedental@gmail.com).\nconst DEMO = CFG.emailMode === 'demo';\nconst recipient = (email, company) => {\n  if (DEMO || !CFG.testMode) return email;\n  const [user, domain] = CFG.mailbox.split('@');\n  return `${user}+${slug(company)}@${domain}`;\n};\nconst tag = (inv) => `[${inv}]`;\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\", \"even if\". Not a string of short separate sentences, and not many full stops.\n- Natural order: the situation, then the reason, then how he feels about it, then the ask.\n- Warm and direct: a quick human check-in at the start (\"Hey Rachel, hope you're doing well\"), plain everyday words, polite softeners like \"if that's okay\", \"sorry to chase you on this\", \"honestly\".\n- Fair: he admits the other side before his point (\"I totally get that things get busy, but...\").\n- He softens instead of accusing: \"it might have slipped through\", \"maybe it got buried in the inbox\".\n- He says the feeling plainly when it matters: \"I'd really appreciate it\", \"I really need this sorted\".\n- He ends with an open question or an offer to help, never a polished one-liner (\"and if anything's holding it up just tell me and I'll sort it out with you\").\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together and not in every message.\n- Never: bookish or corporate words (kindly, per my last email, please be advised, valued, leverage), em dashes, exclamation marks, emoji, or a wise-sounding closing line.`;\n\n// Picks the invoices whose next step is due today and asks Claude to write each email.\nconst rows = $input.all().map((i) => i.json).filter((r) => r.invoice_no);\n\nconst TONE = {\n  heads_up: 'A friendly heads-up a few days before the due date. Light and helpful, no pressure. Ask them to say if they need anything (a PO number, a different format).',\n  friendly: 'The invoice is due or a few days overdue. Warm and polite. Assume it slipped through the cracks. Ask when they expect to pay.',\n  clear: 'About a week or more overdue. Still polite, but clear and direct about the amount and how late it is. Ask for a payment date.',\n  firm: 'Two weeks or more overdue, after several reminders. Firm and professional, never threatening. Ask them to pay or reply with a date this week, and offer a quick call if something is wrong.',\n  broken_promise: 'The client promised to pay by a date that has now passed. Polite. Mention their promise and the date specifically, and ask for an updated date.',\n  escalate: 'This is an INTERNAL note to the business owner, not to the client. Several reminders got no payment. In 2-3 sentences summarize the situation and suggest the next human step, such as a phone call.',\n};\n\nconst SYSTEM = `You write payment reminder emails for ${CFG.business}, sent as ${CFG.ownerName}.\n\n${VOICE}\n\nRules for these emails:\n- Plain text only, no markdown, 50 to 120 words for the body, and a new line is fine where he would pause.\n- Always include the invoice number, the amount, the due date and the payment link.\n- Never threaten, and never mention legal action, late fees, collections or credit. No guilt-tripping.\n- Greet the contact by first name if given, otherwise \"Hey there\".\n- Unless the stage says otherwise, end by asking when they expect to pay, because replies are read and handled.\n- Sign off with \"Thanks,\" then \"${CFG.ownerName}\" on the next line.\n- For an internal note to the owner, write it the way he'd jot a note to himself: plain and connected, no greeting and no sign-off.\n- subject: short and specific (3 to 8 words), in his plain style. Don't add the invoice tag in brackets, it's added automatically.`;\n\nconst SCHEMA = {\n  type: 'object',\n  properties: { subject: { type: 'string' }, body: { type: 'string' } },\n  required: ['subject', 'body'],\n  additionalProperties: false,\n};\n\nconst due = rows.filter((r) => ['unpaid', 'promised'].includes(r.status) && isDate(r.next_action) && r.next_action <= today);\nif (!due.length) return [];\n\nreturn due.map((r) => {\n  const late = daysBetween(r.due_date, today); // positive = overdue\n  const sent = Number(r.reminders_sent) || 0;\n  let stage;\n  if (r.status === 'promised') stage = 'broken_promise';\n  else if (sent >= 4) stage = 'escalate';\n  else if (late < 0) stage = 'heads_up';\n  else if (late < 7) stage = 'friendly';\n  else if (late < 14) stage = 'clear';\n  else stage = 'firm';\n\n  const facts = `Invoice: ${r.invoice_no}\nClient company: ${r.client_company}\nContact name: ${r.client_name || '(unknown)'}\nAmount: ${money(r.amount, r.currency)}\nIssued: ${fmtDate(r.issue_date)}\nDue: ${fmtDate(r.due_date)} (${late > 0 ? late + ' days overdue' : late === 0 ? 'due today' : 'due in ' + -late + ' days'})\nReminders already sent: ${sent}\n${r.status === 'promised' ? `They promised to pay by: ${fmtDate(r.promised_date)} (${weekday(r.promised_date)})\\n` : ''}Payment link: ${r.invoice_link || CFG.paymentLink}\nToday: ${fmtDate(today)} (${weekday(today)})\n\nStage and tone: ${TONE[stage]}`;\n\n  return {\n    json: {\n      invoice: r,\n      stage,\n      late,\n      claudeBody: {\n        model: CFG.claudeModel,\n        max_tokens: 4000,\n        system: SYSTEM,\n        messages: [{ role: 'user', content: facts }],\n        output_config: { effort: 'low', format: { type: 'json_schema', schema: SCHEMA } },\n        fallbacks: 'default',\n      },\n    },\n  };\n});\n"
+      },
+      "id": "455748a2-07dc-4a70-a717-1647657e1d12"
+    },
+    {
+      "name": "Claude writes reminders",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2026-10-21"
+            },
+            {
+              "name": "anthropic-beta",
+              "value": "server-side-fallback-2026-07-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.claudeBody) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 3,
+              "batchInterval": 300
+            }
+          },
+          "timeout": 180000
+        }
+      },
+      "id": "71e40c9d-6b97-4438-997a-4f036e6b6a72"
+    },
+    {
+      "name": "Build emails",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Northlight Studio\",\"ownerName\":\"Sam\",\"mailbox\":\"billing@northlight.studio\",\"emailMode\":\"demo\",\"testMode\":true,\"currency\":\"USD\",\"paymentLink\":\"https://pay.northlight.studio/invoices\",\"claudeModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst isDate = (s) => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(s || ''));\nconst toUTC = (s) => { const [y, m, d] = String(s).split('-').map(Number); return Date.UTC(y, m - 1, d); };\nconst addDays = (s, n) => new Date(toUTC(s) + n * 86400000).toISOString().slice(0, 10);\nconst daysBetween = (a, b) => Math.round((toUTC(b) - toUTC(a)) / 86400000); // b - a\nconst weekday = (s) => DAYS[new Date(toUTC(s)).getUTCDay()];\nconst fmtDate = (s) => (isDate(s) ? `${MONTHS[Number(s.slice(5, 7)) - 1]} ${Number(s.slice(8, 10))}` : '');\nconst money = (n, cur) => {\n  const v = Number(n) || 0;\n  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur || CFG.currency, maximumFractionDigits: 0 }).format(v); }\n  catch { return '$' + Math.round(v).toLocaleString('en-US'); }\n};\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst slug = (s) => String(s || 'client').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'client';\n// emailMode \"demo\": nothing leaves the machine, emails land in the Mailbox table, so real addresses are shown.\n// emailMode \"real\" + testMode: every client email goes to a plus-address of your own inbox (you+acmedental@gmail.com).\nconst DEMO = CFG.emailMode === 'demo';\nconst recipient = (email, company) => {\n  if (DEMO || !CFG.testMode) return email;\n  const [user, domain] = CFG.mailbox.split('@');\n  return `${user}+${slug(company)}@${domain}`;\n};\nconst tag = (inv) => `[${inv}]`;\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\", \"even if\". Not a string of short separate sentences, and not many full stops.\n- Natural order: the situation, then the reason, then how he feels about it, then the ask.\n- Warm and direct: a quick human check-in at the start (\"Hey Rachel, hope you're doing well\"), plain everyday words, polite softeners like \"if that's okay\", \"sorry to chase you on this\", \"honestly\".\n- Fair: he admits the other side before his point (\"I totally get that things get busy, but...\").\n- He softens instead of accusing: \"it might have slipped through\", \"maybe it got buried in the inbox\".\n- He says the feeling plainly when it matters: \"I'd really appreciate it\", \"I really need this sorted\".\n- He ends with an open question or an offer to help, never a polished one-liner (\"and if anything's holding it up just tell me and I'll sort it out with you\").\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together and not in every message.\n- Never: bookish or corporate words (kindly, per my last email, please be advised, valued, leverage), em dashes, exclamation marks, emoji, or a wise-sounding closing line.`;\n\n// Turns Claude's drafts into emails, plus the invoice update and activity entry for each.\n// If Claude fails, a plain template is used so a reminder is never skipped.\nconst picks = $('Pick invoices to chase').all();\nconst answers = $input.all();\n\nconst STAGE_LABEL = { heads_up: 'heads-up', friendly: 'friendly', clear: 'clear', firm: 'firm', broken_promise: 'missed promise', escalate: 'escalated to you' };\n\nconst parse = (r) => {\n  try {\n    if (!r || r.stop_reason === 'refusal') return null;\n    const t = (r.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');\n    const a = JSON.parse(t);\n    return a.subject && a.body ? a : null;\n  } catch { return null; }\n};\n\nconst template = (inv, stage, late) => {\n  const first = (inv.client_name || '').split(' ')[0] || 'there';\n  if (stage === 'escalate') return {\n    subject: `${inv.client_company} still hasn't paid ${inv.invoice_no}`,\n    body: `${inv.client_company} still owes ${money(inv.amount, inv.currency)} on ${inv.invoice_no}, it's ${late} days late now and ${inv.reminders_sent} reminders didn't get a payment or a date, so I stopped emailing them and honestly a quick call from you is the best next step here.`,\n  };\n  return {\n    subject: late < 0 ? `Heads up on invoice ${inv.invoice_no}` : `Quick follow up on ${inv.invoice_no}`,\n    body: `Hey ${first},\\n\\nhope you're doing well, I just wanted to follow up on invoice ${inv.invoice_no} for ${money(inv.amount, inv.currency)}, ${late < 0 ? 'which is due on ' + fmtDate(inv.due_date) : 'which was due on ' + fmtDate(inv.due_date) + ' and might have slipped through'}, so here's the link again in case you need it: ${inv.invoice_link || CFG.paymentLink}\\n\\nCould you let me know when you're expecting to pay it? And if anything's holding it up just tell me and I'll help.\\n\\nThanks,\\n${CFG.ownerName}`,\n  };\n};\n\nreturn picks.map((p, i) => {\n  const { invoice: inv, stage, late } = p.json;\n  const ai = parse(answers[i] && answers[i].json);\n  const draft = ai || template(inv, stage, late);\n  const escalate = stage === 'escalate';\n  const subject = `${draft.subject.replace(/\\[INV-\\d+\\]/gi, '').trim()} ${tag(inv.invoice_no)}`;\n  const to = escalate ? CFG.mailbox : recipient(inv.client_email, inv.client_company);\n  const sent = (Number(inv.reminders_sent) || 0) + (escalate ? 0 : 1);\n\n  const next = escalate ? '' : stage === 'heads_up' ? inv.due_date : addDays(today, stage === 'broken_promise' ? 4 : 5);\n  const note = escalate\n    ? `${sent} reminders and still no payment or date, so I stopped emailing them and it really needs a call from you`\n    : `Sent reminder #${sent} in a ${STAGE_LABEL[stage]} tone, and if nothing comes back I'll follow up ${next === today ? 'today' : 'on ' + fmtDate(next)}`;\n\n  return {\n    json: {\n      to,\n      subject: escalate ? `Needs you: ${subject}` : subject,\n      body: draft.body,\n      update: {\n        invoice_no: inv.invoice_no,\n        status: escalate ? 'escalated' : 'unpaid',\n        promised_date: stage === 'broken_promise' ? '' : (inv.promised_date || ''),\n        reminders_sent: sent,\n        next_action: next,\n        last_update: today,\n        ai_note: note,\n      },\n      activity: {\n        invoice_no: inv.invoice_no,\n        at: nowIso,\n        kind: escalate ? 'alert' : 'sent',\n        title: escalate ? 'Flagged for you, no payment after all the reminders' : subject,\n        body: draft.body,\n        ai_note: `${ai ? 'Written by Claude' : 'Used the backup template because the AI was down'} · ${STAGE_LABEL[stage]} tone${CFG.testMode && !DEMO && !escalate ? ' · test mode: sent to ' + to : ''}`,\n      },\n    },\n  };\n});\n"
+      },
+      "id": "f1d3b281-44e0-4049-88e4-794aeca550e7"
+    },
+    {
+      "name": "Send email · format",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Northlight Studio\",\"ownerName\":\"Sam\",\"mailbox\":\"billing@northlight.studio\",\"emailMode\":\"demo\",\"testMode\":true,\"currency\":\"USD\",\"paymentLink\":\"https://pay.northlight.studio/invoices\",\"claudeModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst isDate = (s) => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(s || ''));\nconst toUTC = (s) => { const [y, m, d] = String(s).split('-').map(Number); return Date.UTC(y, m - 1, d); };\nconst addDays = (s, n) => new Date(toUTC(s) + n * 86400000).toISOString().slice(0, 10);\nconst daysBetween = (a, b) => Math.round((toUTC(b) - toUTC(a)) / 86400000); // b - a\nconst weekday = (s) => DAYS[new Date(toUTC(s)).getUTCDay()];\nconst fmtDate = (s) => (isDate(s) ? `${MONTHS[Number(s.slice(5, 7)) - 1]} ${Number(s.slice(8, 10))}` : '');\nconst money = (n, cur) => {\n  const v = Number(n) || 0;\n  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur || CFG.currency, maximumFractionDigits: 0 }).format(v); }\n  catch { return '$' + Math.round(v).toLocaleString('en-US'); }\n};\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst slug = (s) => String(s || 'client').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'client';\n// emailMode \"demo\": nothing leaves the machine, emails land in the Mailbox table, so real addresses are shown.\n// emailMode \"real\" + testMode: every client email goes to a plus-address of your own inbox (you+acmedental@gmail.com).\nconst DEMO = CFG.emailMode === 'demo';\nconst recipient = (email, company) => {\n  if (DEMO || !CFG.testMode) return email;\n  const [user, domain] = CFG.mailbox.split('@');\n  return `${user}+${slug(company)}@${domain}`;\n};\nconst tag = (inv) => `[${inv}]`;\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\", \"even if\". Not a string of short separate sentences, and not many full stops.\n- Natural order: the situation, then the reason, then how he feels about it, then the ask.\n- Warm and direct: a quick human check-in at the start (\"Hey Rachel, hope you're doing well\"), plain everyday words, polite softeners like \"if that's okay\", \"sorry to chase you on this\", \"honestly\".\n- Fair: he admits the other side before his point (\"I totally get that things get busy, but...\").\n- He softens instead of accusing: \"it might have slipped through\", \"maybe it got buried in the inbox\".\n- He says the feeling plainly when it matters: \"I'd really appreciate it\", \"I really need this sorted\".\n- He ends with an open question or an offer to help, never a polished one-liner (\"and if anything's holding it up just tell me and I'll sort it out with you\").\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together and not in every message.\n- Never: bookish or corporate words (kindly, per my last email, please be advised, valued, leverage), em dashes, exclamation marks, emoji, or a wise-sounding closing line.`;\n\n// Demo mode: instead of sending, every outgoing email is saved to the Mailbox table.\nconst rows = $input.all().map((i) => i.json);\nreturn rows.map((e) => ({ json: {\n  at: nowIso,\n  direction: e.to === CFG.mailbox ? 'owner' : 'out',\n  invoice_no: (String(e.subject).match(/INV-\\d+/) || [''])[0],\n  from_name: `${CFG.business} Billing`,\n  to_addr: e.to,\n  subject: e.subject,\n  body: e.body,\n} }));\n\n"
+      },
+      "id": "b0e4cb47-61ce-400a-bf3e-fe3474424351"
+    },
+    {
+      "name": "Send email",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1440,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Mailbox"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null
+        },
+        "options": {}
+      },
+      "id": "0aaca50a-c786-43e4-8aca-a39ca1c5af6e"
+    },
+    {
+      "name": "Invoice updates",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return $('Build emails').all().map((i) => ({ json: i.json.update }));"
+      },
+      "id": "e1c01a7f-d6f3-41e8-b5eb-e319bb5debc5"
+    },
+    {
+      "name": "Update invoices",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1920,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Invoices"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "invoice_no",
+              "condition": "eq",
+              "keyValue": "={{ $json.invoice_no }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null
+        },
+        "options": {}
+      },
+      "id": "6e09b51b-996c-4ff6-837c-8afd767d8b92"
+    },
+    {
+      "name": "Activity entries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        0
+      ],
+      "parameters": {
+        "jsCode": "return $('Build emails').all().map((i) => ({ json: i.json.activity }));"
+      },
+      "id": "758b8b4d-fffd-48bc-9730-e7b3128d2d8c"
+    },
+    {
+      "name": "Log activity",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2400,
+        0
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Activity"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null
+        },
+        "options": {}
+      },
+      "id": "d57c8869-1cb9-4a7b-87b5-1664f7c8076f"
+    }
+  ],
+  "connections": {
+    "Every day 9:00": {
+      "main": [
+        [
+          {
+            "node": "Get invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run now (from dashboard)": {
+      "main": [
+        [
+          {
+            "node": "Get invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get invoices": {
+      "main": [
+        [
+          {
+            "node": "Pick invoices to chase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick invoices to chase": {
+      "main": [
+        [
+          {
+            "node": "Claude writes reminders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude writes reminders": {
+      "main": [
+        [
+          {
+            "node": "Build emails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build emails": {
+      "main": [
+        [
+          {
+            "node": "Send email · format",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email · format": {
+      "main": [
+        [
+          {
+            "node": "Send email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email": {
+      "main": [
+        [
+          {
+            "node": "Invoice updates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invoice updates": {
+      "main": [
+        [
+          {
+            "node": "Update invoices",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update invoices": {
+      "main": [
+        [
+          {
+            "node": "Activity entries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Activity entries": {
+      "main": [
+        [
+          {
+            "node": "Log activity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

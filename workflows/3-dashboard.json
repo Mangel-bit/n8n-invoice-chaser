@@ -1,0 +1,793 @@
+{
+  "id": "invChaserDash001",
+  "name": "Invoice Chaser · 3 Dashboard",
+  "active": false,
+  "nodes": [
+    {
+      "name": "Dashboard page",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "6a1f2c3d-4b5e-4f60-8a71-92b3c4d5e611",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "invoices",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "e5707a0a-8e02-42f1-9d65-d68a2494f3e7"
+    },
+    {
+      "name": "Get invoices for page",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        0
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Invoices"
+        },
+        "matchType": "anyCondition",
+        "filters": {},
+        "returnAll": true
+      },
+      "id": "36b0a1b2-8ff0-48cd-8888-898a029244ec"
+    },
+    {
+      "name": "Get activity",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        0
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Activity"
+        },
+        "matchType": "anyCondition",
+        "filters": {},
+        "returnAll": true
+      },
+      "id": "7e98b009-a36b-4b7d-92e8-3d7192bffc16"
+    },
+    {
+      "name": "Render dashboard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Northlight Studio\",\"ownerName\":\"Sam\",\"mailbox\":\"billing@northlight.studio\",\"emailMode\":\"demo\",\"testMode\":true,\"currency\":\"USD\",\"paymentLink\":\"https://pay.northlight.studio/invoices\",\"claudeModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst isDate = (s) => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(s || ''));\nconst toUTC = (s) => { const [y, m, d] = String(s).split('-').map(Number); return Date.UTC(y, m - 1, d); };\nconst addDays = (s, n) => new Date(toUTC(s) + n * 86400000).toISOString().slice(0, 10);\nconst daysBetween = (a, b) => Math.round((toUTC(b) - toUTC(a)) / 86400000); // b - a\nconst weekday = (s) => DAYS[new Date(toUTC(s)).getUTCDay()];\nconst fmtDate = (s) => (isDate(s) ? `${MONTHS[Number(s.slice(5, 7)) - 1]} ${Number(s.slice(8, 10))}` : '');\nconst money = (n, cur) => {\n  const v = Number(n) || 0;\n  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur || CFG.currency, maximumFractionDigits: 0 }).format(v); }\n  catch { return '$' + Math.round(v).toLocaleString('en-US'); }\n};\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst slug = (s) => String(s || 'client').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'client';\n// emailMode \"demo\": nothing leaves the machine, emails land in the Mailbox table, so real addresses are shown.\n// emailMode \"real\" + testMode: every client email goes to a plus-address of your own inbox (you+acmedental@gmail.com).\nconst DEMO = CFG.emailMode === 'demo';\nconst recipient = (email, company) => {\n  if (DEMO || !CFG.testMode) return email;\n  const [user, domain] = CFG.mailbox.split('@');\n  return `${user}+${slug(company)}@${domain}`;\n};\nconst tag = (inv) => `[${inv}]`;\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\", \"even if\". Not a string of short separate sentences, and not many full stops.\n- Natural order: the situation, then the reason, then how he feels about it, then the ask.\n- Warm and direct: a quick human check-in at the start (\"Hey Rachel, hope you're doing well\"), plain everyday words, polite softeners like \"if that's okay\", \"sorry to chase you on this\", \"honestly\".\n- Fair: he admits the other side before his point (\"I totally get that things get busy, but...\").\n- He softens instead of accusing: \"it might have slipped through\", \"maybe it got buried in the inbox\".\n- He says the feeling plainly when it matters: \"I'd really appreciate it\", \"I really need this sorted\".\n- He ends with an open question or an offer to help, never a polished one-liner (\"and if anything's holding it up just tell me and I'll sort it out with you\").\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together and not in every message.\n- Never: bookish or corporate words (kindly, per my last email, please be advised, valued, leverage), em dashes, exclamation marks, emoji, or a wise-sounding closing line.`;\n\n// Renders the receivables dashboard as one HTML page (no scripts, forms post to n8n webhooks).\nconst rows = $('Get invoices for page').all().map((i) => i.json).filter((r) => r.invoice_no);\nconst acts = $('Get activity').all().map((i) => i.json).filter((a) => a.invoice_no);\nconst q = ($('Dashboard page').first().json.query) || {};\n\nconst STATUS = {\n  unpaid:        { label: 'Chasing',        cls: 'chasing' },\n  promised:      { label: 'Promised',       cls: 'promised' },\n  check_payment: { label: 'Check payment',  cls: 'check' },\n  disputed:      { label: 'Disputed',       cls: 'disputed' },\n  needs_you:     { label: 'Needs you',      cls: 'needs' },\n  escalated:     { label: 'Call client',    cls: 'disputed' },\n  paid:          { label: 'Paid',           cls: 'paid' },\n};\nconst ATTENTION = ['disputed', 'needs_you', 'check_payment', 'escalated'];\nconst ICON = { sent: '↗', reply: '↙', alert: '!', created: '+', paid: '✓' };\n\nconst open = rows.filter((r) => r.status !== 'paid');\nconst sum = (list) => list.reduce((s, r) => s + (Number(r.amount) || 0), 0);\nconst late = (r) => daysBetween(r.due_date, today);\nconst outstanding = sum(open);\nconst overdue = open.filter((r) => late(r) > 0);\nconst promisedSoon = open.filter((r) => r.status === 'promised' && isDate(r.promised_date) && r.promised_date <= addDays(today, 7));\nconst monthStart = today.slice(0, 8) + '01';\nconst collected = rows.filter((r) => r.status === 'paid' && (r.paid_date || '') >= monthStart);\n\nconst buckets = [\n  { key: 'Not due yet', cls: 'b0', list: open.filter((r) => late(r) <= 0) },\n  { key: '1–30 days', cls: 'b1', list: open.filter((r) => late(r) > 0 && late(r) <= 30) },\n  { key: '31–60 days', cls: 'b2', list: open.filter((r) => late(r) > 30 && late(r) <= 60) },\n  { key: '60+ days', cls: 'b3', list: open.filter((r) => late(r) > 60) },\n].map((b) => ({ ...b, total: sum(b.list) }));\n\nconst dueText = (r) => {\n  const d = late(r);\n  if (r.status === 'paid') return `Paid ${fmtDate(r.paid_date)}`;\n  if (d > 0) return `<span class=\"late\">${d}d late</span> · due ${fmtDate(r.due_date)}`;\n  if (d === 0) return 'Due today';\n  return `Due in ${-d}d · ${fmtDate(r.due_date)}`;\n};\nconst nextText = (r) => {\n  if (r.status === 'unpaid') return isDate(r.next_action) ? `Reminder ${Number(r.reminders_sent || 0) + 1} ${r.next_action <= today ? 'goes out on next run' : 'on ' + fmtDate(r.next_action)}` : 'Scheduled';\n  if (r.status === 'promised') return `Waiting · follow up ${fmtDate(r.next_action)} if unpaid`;\n  if (r.status === 'paid') return 'Done';\n  return 'Paused until you act';\n};\nconst pill = (r) => {\n  const s = STATUS[r.status] || { label: r.status, cls: 'chasing' };\n  const extra = r.status === 'promised' && isDate(r.promised_date) ? ` · ${weekday(r.promised_date).slice(0, 3)} ${fmtDate(r.promised_date)}` : '';\n  return `<span class=\"pill ${s.cls}\"><i></i>${esc(s.label + extra)}</span>`;\n};\nconst timeline = (inv) => {\n  const list = acts.filter((a) => a.invoice_no === inv).sort((a, b) => String(b.at).localeCompare(String(a.at)));\n  if (!list.length) return '<p class=\"empty\">Nothing happened on this one yet.</p>';\n  return `<ol class=\"tl\">${list.map((a) => `\n    <li class=\"k-${esc(a.kind)}\">\n      <span class=\"dot\">${ICON[a.kind] || '·'}</span>\n      <div class=\"tl-body\">\n        <div class=\"tl-head\"><b>${esc(a.title)}</b><time>${esc(fmtDate(String(a.at).slice(0, 10)))} · ${esc(String(a.at).slice(11, 16))}</time></div>\n        ${a.body ? `<p class=\"msg\">${esc(a.body)}</p>` : ''}\n        ${a.ai_note ? `<p class=\"ai\"><span>AI</span>${esc(a.ai_note)}</p>` : ''}\n      </div>\n    </li>`).join('')}</ol>`;\n};\nconst paidForm = (r) => `<form method=\"post\" action=\"/webhook/invoices-paid\"><input type=\"hidden\" name=\"invoice_no\" value=\"${esc(r.invoice_no)}\"><button class=\"btn small ghost\" type=\"submit\">Mark paid</button></form>`;\n\nconst order = (r) => (ATTENTION.includes(r.status) ? 0 : r.status === 'unpaid' ? 1 : 2) * 100000 - late(r);\nconst ledger = open.slice().sort((a, b) => order(a) - order(b)).map((r) => `\n  <details class=\"row ${ATTENTION.includes(r.status) ? 'flag' : ''}\">\n    <summary>\n      <span class=\"inv mono\">${esc(r.invoice_no)}</span>\n      <span class=\"who\"><b>${esc(r.client_company)}</b><small>${esc(r.client_name || '')}</small></span>\n      <span class=\"amt mono\">${esc(money(r.amount, r.currency))}</span>\n      <span class=\"due\">${dueText(r)}</span>\n      <span class=\"st\">${pill(r)}</span>\n      <span class=\"next\">${esc(nextText(r))}</span>\n    </summary>\n    <div class=\"detail\">\n      <div class=\"note\"><span class=\"ai-tag\">Agent</span>${esc(r.ai_note || 'Nothing to note yet.')}</div>\n      <div class=\"detail-grid\">\n        <div>${timeline(r.invoice_no)}</div>\n        <dl class=\"facts\">\n          <dt>Contact</dt><dd>${esc(r.client_name || '–')}<br><span class=\"mono small\">${esc(r.client_email || '')}</span></dd>\n          <dt>Issued</dt><dd>${esc(fmtDate(r.issue_date))}</dd>\n          <dt>Reminders sent</dt><dd class=\"mono\">${esc(r.reminders_sent || 0)}</dd>\n          <dt>Invoice</dt><dd><a href=\"${esc(r.invoice_link || '#')}\" target=\"_blank\" rel=\"noopener\">Open link</a></dd>\n          <dd class=\"actions\">${paidForm(r)}</dd>\n        </dl>\n      </div>\n    </div>\n  </details>`).join('') || \"<p class=\\\"empty big\\\">Nothing outstanding, every invoice is paid and honestly that's the best screen to see.</p>\";\n\nconst attention = open.filter((r) => ATTENTION.includes(r.status)).map((r) => `\n  <article class=\"card ${STATUS[r.status]?.cls || ''}\">\n    <header>${pill(r)}<span class=\"mono\">${esc(money(r.amount, r.currency))}</span></header>\n    <h3>${esc(r.client_company)} <span class=\"mono muted\">${esc(r.invoice_no)}</span></h3>\n    <p>${esc(r.ai_note || '')}</p>\n    ${r.status === 'check_payment' ? paidForm(r) : ''}\n  </article>`).join('') || \"<p class=\\\"empty\\\">Nothing needs you right now, I'm handling all of it.</p>\";\n\nconst feed = acts.slice().sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 7).map((a) => {\n  const r = rows.find((x) => x.invoice_no === a.invoice_no) || {};\n  return `<li><span class=\"dot\">${ICON[a.kind] || '·'}</span><div><b>${esc(r.client_company || a.invoice_no)}</b> ${esc(a.kind === 'reply' ? 'replied' : a.kind === 'sent' ? 'got a reminder' : a.kind === 'paid' ? 'paid' : a.kind === 'alert' ? 'was flagged for you' : 'was added')}<small>${esc(a.ai_note || a.title)}</small></div></li>`;\n}).join('');\n\nconst paidList = rows.filter((r) => r.status === 'paid').sort((a, b) => String(b.paid_date).localeCompare(String(a.paid_date))).slice(0, 6)\n  .map((r) => `<li><span class=\"mono\">${esc(r.invoice_no)}</span><span>${esc(r.client_company)}</span><span class=\"mono\">${esc(money(r.amount, r.currency))}</span><span class=\"muted\">${esc(fmtDate(r.paid_date))}</span></li>`).join('');\n\nconst nextNo = 'INV-' + (Math.max(1000, ...rows.map((r) => Number(String(r.invoice_no).replace(/\\D/g, '')) || 0)) + 1);\nconst banner = q.done === 'run' ? 'Done, I went through everything that was due and the new reminders and notes are below' : q.done === 'paid' ? 'Marked it paid, so the reminders for that one are stopped' : q.done === 'add' ? \"Added it, and I'll take it from here\" : q.done === 'reset' ? \"Demo reset, everything's back to where it started\" : q.done === 'reply' ? \"Got the client's reply and I already handled it, the details are below\" : '';\nconst maxBucket = Math.max(outstanding, 1);\n\nconst html = `<!doctype html>\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n<title>Receivables · ${esc(CFG.business)}</title>\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap\">\n<style>\n/* Layout: a modern ledger. Money in mono, status in colour, the agent's reasoning always one click away. */\n:root{\n  --bg:#F3F4F6;--surface:#fff;--ink:#0E1525;--muted:#5F6779;--line:#E2E5EB;--soft:#F7F8FA;\n  --money:#0B7A5C;--money-soft:#E2F3EC;\n  --chasing:#3A5A8C;--chasing-soft:#E6EDF7;--promised:#A86A0F;--promised-soft:#FCF1DD;\n  --check:#0B7486;--check-soft:#DFF2F5;--disputed:#C0392B;--disputed-soft:#FBE6E3;\n  --needs:#6A4BD4;--needs-soft:#EEEAFD;--paid:#0B7A5C;--paid-soft:#E2F3EC;\n  --sans:\"Geist\",\"Segoe UI\",system-ui,sans-serif;--mono:\"Geist Mono\",ui-monospace,Consolas,monospace;\n}\n*{box-sizing:border-box}\nbody{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 var(--sans);-webkit-font-smoothing:antialiased}\n.wrap{max-width:1240px;margin:0 auto;padding:0 20px}\n.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}\n.muted{color:var(--muted)}.small{font-size:12px}\na{color:var(--chasing)}\nbutton,input{font:inherit}\n.btn{border:0;border-radius:9px;padding:9px 14px;font-weight:600;cursor:pointer;background:var(--ink);color:#fff;display:inline-flex;align-items:center;gap:8px}\n.btn.ghost{background:var(--surface);color:var(--ink);border:1px solid var(--line)}\n.btn.small{padding:6px 11px;font-size:12.5px}\n.btn:focus-visible,summary:focus-visible,input:focus-visible{outline:2px solid var(--chasing);outline-offset:2px}\n/* top bar */\n.top{background:var(--ink);color:#fff}\n.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:14px;padding-bottom:14px;flex-wrap:wrap}\n.brand{display:flex;align-items:center;gap:12px}\n.mark{width:34px;height:34px;border-radius:9px;background:var(--money);display:grid;place-items:center;font-weight:700;font-size:16px}\n.brand b{display:block;font-size:15px;letter-spacing:-.01em}\n.brand small{color:#A9B1C3;font-size:12px}\n.top-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}\n.top .btn{background:#fff;color:var(--ink)}\n.top .btn.ghost{background:transparent;color:#fff;border-color:#2C3650}\na.btn{text-decoration:none}\n.test{font:500 11px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:#FFD38A;border:1px solid #6B5320;border-radius:999px;padding:4px 10px}\n.live{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#A9B1C3}\n.live i{width:7px;height:7px;border-radius:50%;background:#33D69F;box-shadow:0 0 0 3px rgba(51,214,159,.18)}\n.banner{background:var(--money-soft);color:var(--money);border:1px solid #BFE3D3;border-radius:10px;padding:10px 14px;margin-top:18px;font-weight:500}\n/* kpis */\n.kpis{display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:12px;margin-top:22px}\n.kpi{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}\n.kpi label{display:block;font:500 11px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}\n.kpi .v{font:600 26px/1.15 var(--mono);letter-spacing:-.03em;margin-top:8px;font-variant-numeric:tabular-nums}\n.kpi.main .v{font-size:36px}\n.kpi small{color:var(--muted)}\n.kpi.red .v{color:var(--disputed)}.kpi.amber .v{color:var(--promised)}.kpi.green .v{color:var(--money)}\n/* aging */\n.aging{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-top:12px}\n.aging-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}\n.aging h2,.panel h2{font-size:13px;margin:0;font-weight:600}\n.bar{display:flex;height:12px;border-radius:6px;overflow:hidden;background:var(--soft);margin:12px 0 10px}\n.bar span{display:block;height:100%}\n.b0{background:#9DB3D6}.b1{background:#E7B35A}.b2{background:#E0794F}.b3{background:#C0392B}\n.legend{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px}\n.legend span{display:inline-flex;align-items:center;gap:7px}\n.legend i{width:9px;height:9px;border-radius:3px;display:inline-block}\n.legend b{font-family:var(--mono);font-weight:500}\n/* main grid */\n.grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;margin:16px 0 40px}\n.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}\n.panel>h2{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}\n.panel>h2 small{font-weight:400;color:var(--muted)}\n.cols,.row summary{display:grid;grid-template-columns:86px minmax(150px,1.3fr) 100px 150px 170px minmax(140px,1fr);gap:12px;align-items:center}\n.cols{padding:9px 18px;font:500 10.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);background:var(--soft);border-bottom:1px solid var(--line)}\n.row{border-bottom:1px solid var(--line)}\n.row:last-child{border-bottom:0}\n.row summary{padding:13px 18px;cursor:pointer;list-style:none}\n.row summary::-webkit-details-marker{display:none}\n.row summary:hover{background:var(--soft)}\n.row[open] summary{background:var(--soft)}\n.row.flag summary{box-shadow:inset 3px 0 0 var(--disputed)}\n.who b{display:block;font-weight:600}.who small{color:var(--muted)}\n.amt{text-align:right;font-weight:500}\n.due,.next{color:var(--muted);font-size:12.5px}\n.late{color:var(--disputed);font-weight:600}\n.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600;white-space:nowrap}\n.pill i{width:6px;height:6px;border-radius:50%;background:currentColor}\n.pill.chasing{background:var(--chasing-soft);color:var(--chasing)}.pill.promised{background:var(--promised-soft);color:var(--promised)}\n.pill.check{background:var(--check-soft);color:var(--check)}.pill.disputed{background:var(--disputed-soft);color:var(--disputed)}\n.pill.needs{background:var(--needs-soft);color:var(--needs)}.pill.paid{background:var(--paid-soft);color:var(--paid)}\n.detail{padding:4px 18px 18px;background:var(--soft)}\n.note{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:14px;display:flex;gap:10px;align-items:flex-start}\n.ai-tag,.ai span{font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;background:var(--ink);color:#fff;border-radius:5px;padding:2px 6px;flex:none;margin-top:2px}\n.detail-grid{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:18px}\n.tl{list-style:none;margin:0;padding:0;position:relative}\n.tl:before{content:\"\";position:absolute;left:13px;top:6px;bottom:6px;width:1px;background:var(--line)}\n.tl li{display:grid;grid-template-columns:28px minmax(0,1fr);gap:10px;margin-bottom:12px;position:relative}\n.dot{width:27px;height:27px;border-radius:50%;display:grid;place-items:center;background:var(--surface);border:1px solid var(--line);font-size:13px;font-weight:700}\n.k-reply .dot{background:var(--chasing-soft);color:var(--chasing);border-color:transparent}\n.k-sent .dot{background:var(--surface);color:var(--muted)}\n.k-alert .dot{background:var(--disputed-soft);color:var(--disputed);border-color:transparent}\n.k-paid .dot{background:var(--paid-soft);color:var(--paid);border-color:transparent}\n.tl-body{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:9px 12px;min-width:0}\n.tl-head{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}\n.tl-head time{font:12px var(--mono);color:var(--muted)}\n.msg{white-space:pre-wrap;margin:6px 0 0;color:#2B3345;overflow-wrap:anywhere}\n.ai{margin:8px 0 0;display:flex;gap:8px;align-items:flex-start;color:var(--ink);font-weight:500}\n.facts{margin:0;display:grid;grid-template-columns:1fr;gap:2px;font-size:13px;align-content:start}\n.facts dt{font:500 10.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:8px}\n.facts dd{margin:0;overflow-wrap:anywhere}\n.facts .actions{margin-top:14px}\n.side{display:grid;gap:16px;align-content:start}\n.cards{padding:12px;display:grid;gap:10px}\n.card{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--surface)}\n.card header{display:flex;justify-content:space-between;align-items:center;gap:8px}\n.card h3{font-size:14px;margin:8px 0 4px}\n.card p{margin:0 0 10px;color:#2B3345;font-size:13px}\n.card.disputed{border-color:#F1C4BD}.card.needs{border-color:#D9D0FA}.card.check{border-color:#BFE3EA}\n.feed{list-style:none;margin:0;padding:12px 16px;display:grid;gap:12px}\n.feed li{display:grid;grid-template-columns:27px 1fr;gap:10px;font-size:13px}\n.feed small{display:block;color:var(--muted);font-size:12px;margin-top:1px}\n.paidlist{list-style:none;margin:0;padding:6px 16px 12px}\n.paidlist li{display:grid;grid-template-columns:72px 1fr auto auto;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}\n.paidlist li:last-child{border:0}\n.empty{color:var(--muted);padding:14px 18px;margin:0}.empty.big{padding:30px 18px;text-align:center}\n.foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;color:var(--muted);font-size:12.5px;padding:0 2px 40px;margin-top:-20px}\n/* add invoice */\n.add{margin-top:16px;background:var(--surface);border:1px solid var(--line);border-radius:14px}\n.add summary{padding:14px 18px;cursor:pointer;font-weight:600;list-style:none;display:flex;justify-content:space-between}\n.add summary::-webkit-details-marker{display:none}\n.add summary:after{content:\"+\";font-family:var(--mono);color:var(--muted)}\n.add[open] summary:after{content:\"–\"}\n.add form{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;padding:0 18px 18px}\n.add label{display:grid;gap:5px;font-size:12px;color:var(--muted);font-weight:500}\n.add input{border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--ink);background:var(--soft);width:100%}\n.add .wide{grid-column:span 2}\n.add .submit{display:flex;align-items:end}\n@media (max-width:1100px){.grid{grid-template-columns:1fr}.cols{display:none}\n  .row summary{grid-template-columns:1fr auto;grid-template-areas:\"who amt\" \"inv st\" \"due next\"}\n  .who{grid-area:who}.amt{grid-area:amt}.inv{grid-area:inv;color:var(--muted)}.st{grid-area:st;justify-self:end}.due{grid-area:due}.next{grid-area:next;text-align:right}}\n@media (max-width:760px){.kpis{grid-template-columns:1fr 1fr}.kpi.main{grid-column:span 2}.detail-grid{grid-template-columns:1fr}.add form{grid-template-columns:1fr 1fr}.add .wide{grid-column:span 2}}\n@media (max-width:480px){.wrap{padding:0 16px}.add form{grid-template-columns:1fr}.add .wide{grid-column:auto}.row summary{grid-template-columns:1fr;grid-template-areas:\"who\" \"amt\" \"st\" \"due\" \"next\" \"inv\"}.amt,.next,.st{text-align:left;justify-self:start}}\n@media (prefers-reduced-motion:reduce){*{transition:none!important}}\n</style></head>\n<body>\n<header class=\"top\"><div class=\"wrap\">\n  <div class=\"brand\"><div class=\"mark\">${esc(CFG.business[0])}</div><div><b>${esc(CFG.business)}</b><small>Receivables · run by your AI collections agent</small></div></div>\n  <div class=\"top-actions\">\n    ${DEMO ? '<span class=\"test\">Demo mode · no real emails go out</span>' : CFG.testMode ? '<span class=\"test\">Test mode · emails go to you</span>' : ''}\n    ${DEMO ? '<a class=\"btn ghost\" href=\"/webhook/inbox\">Client inbox</a>' : ''}\n    <span class=\"live\"><i></i>Agent on · checks every morning at 9 and reads replies as they come in</span>\n    <form method=\"post\" action=\"/webhook/invoices-run\"><button class=\"btn\" type=\"submit\">Run chaser now</button></form>\n  </div>\n</div></header>\n\n<main class=\"wrap\">\n  ${banner ? `<div class=\"banner\">${esc(banner)}</div>` : ''}\n\n  <section class=\"kpis\">\n    <div class=\"kpi main\"><label>Outstanding</label><div class=\"v\">${esc(money(outstanding))}</div><small>across ${open.length} open invoice${open.length === 1 ? '' : 's'}</small></div>\n    <div class=\"kpi red\"><label>Overdue</label><div class=\"v\">${esc(money(sum(overdue)))}</div><small>${overdue.length} invoice${overdue.length === 1 ? '' : 's'} past due</small></div>\n    <div class=\"kpi amber\"><label>Promised · next 7 days</label><div class=\"v\">${esc(money(sum(promisedSoon)))}</div><small>${promisedSoon.length} client${promisedSoon.length === 1 ? '' : 's'} gave a date</small></div>\n    <div class=\"kpi green\"><label>Collected this month</label><div class=\"v\">${esc(money(sum(collected)))}</div><small>${collected.length} paid</small></div>\n  </section>\n\n  <section class=\"aging\">\n    <div class=\"aging-head\"><h2>Aging</h2><span class=\"muted small\">How long the money has been waiting</span></div>\n    <div class=\"bar\">${buckets.filter((b) => b.total > 0).map((b) => `<span class=\"${b.cls}\" style=\"width:${(b.total / maxBucket * 100).toFixed(2)}%\" title=\"${esc(b.key)}\"></span>`).join('')}</div>\n    <div class=\"legend\">${buckets.map((b) => `<span><i class=\"${b.cls}\"></i>${esc(b.key)} <b>${esc(money(b.total))}</b></span>`).join('')}</div>\n  </section>\n\n  <details class=\"add\">\n    <summary>Add an invoice</summary>\n    <form method=\"post\" action=\"/webhook/invoices-add\">\n      <label>Invoice no.<input id=\"f-no\" name=\"invoice_no\" value=\"${esc(nextNo)}\"></label>\n      <label class=\"wide\">Client company<input id=\"f-co\" name=\"client_company\" required placeholder=\"Acme Dental Group\"></label>\n      <label>Amount (${esc(CFG.currency)})<input id=\"f-amt\" name=\"amount\" required inputmode=\"decimal\" placeholder=\"1200\"></label>\n      <label>Contact name<input id=\"f-name\" name=\"client_name\" placeholder=\"Rachel Kim\"></label>\n      <label>Contact email<input id=\"f-email\" name=\"client_email\" type=\"email\" required placeholder=\"ap@acme.com\"></label>\n      <label>Due date<input id=\"f-due\" name=\"due_date\" type=\"date\" required value=\"${esc(addDays(today, 14))}\"></label>\n      <label>Invoice link<input id=\"f-link\" name=\"invoice_link\" placeholder=\"Optional\"></label>\n      <div class=\"submit\"><button class=\"btn\" type=\"submit\">Add and start chasing</button></div>\n    </form>\n  </details>\n\n  <div class=\"grid\">\n    <section class=\"panel\">\n      <h2>Open invoices <small>Open any row to see the whole conversation and why the agent did what it did</small></h2>\n      <div class=\"cols\"><span>Invoice</span><span>Client</span><span style=\"text-align:right\">Amount</span><span>Due</span><span>Status</span><span>Next step</span></div>\n      ${ledger}\n    </section>\n    <aside class=\"side\">\n      <section class=\"panel\"><h2>Needs you <small>${open.filter((r) => ATTENTION.includes(r.status)).length}</small></h2><div class=\"cards\">${attention}</div></section>\n      <section class=\"panel\"><h2>Agent activity</h2><ul class=\"feed\">${feed || '<li class=\"empty\">Nothing yet.</li>'}</ul></section>\n      ${paidList ? `<section class=\"panel\"><h2>Recently paid</h2><ul class=\"paidlist\">${paidList}</ul></section>` : ''}\n    </aside>\n  </div>\n  ${CFG.testMode ? `<footer class=\"foot\"><span>${DEMO ? \"Demo mode, so every email stays in the Client inbox and nothing reaches a real client\" : 'Test mode, so nothing reaches a real client'}</span><form method=\"post\" action=\"/webhook/invoice-chaser-reset\"><button class=\"btn small ghost\" type=\"submit\">Reset demo data</button></form></footer>` : ''}\n</main>\n</body></html>`;\n\nreturn [{ json: { html } }];\n"
+      },
+      "id": "42b670b2-b512-44a8-8fc7-689180ea4698"
+    },
+    {
+      "name": "Send page",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        960,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "84f082cf-a12e-49a5-a84f-407ac72a4a93"
+    },
+    {
+      "name": "Add invoice",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        200
+      ],
+      "webhookId": "6a1f2c3d-4b5e-4f60-8a71-92b3c4d5e612",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "invoices-add",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "a0dfb0b4-babf-43bf-b6c7-d3fc304eed01"
+    },
+    {
+      "name": "Build invoice",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Northlight Studio\",\"ownerName\":\"Sam\",\"mailbox\":\"billing@northlight.studio\",\"emailMode\":\"demo\",\"testMode\":true,\"currency\":\"USD\",\"paymentLink\":\"https://pay.northlight.studio/invoices\",\"claudeModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst isDate = (s) => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(s || ''));\nconst toUTC = (s) => { const [y, m, d] = String(s).split('-').map(Number); return Date.UTC(y, m - 1, d); };\nconst addDays = (s, n) => new Date(toUTC(s) + n * 86400000).toISOString().slice(0, 10);\nconst daysBetween = (a, b) => Math.round((toUTC(b) - toUTC(a)) / 86400000); // b - a\nconst weekday = (s) => DAYS[new Date(toUTC(s)).getUTCDay()];\nconst fmtDate = (s) => (isDate(s) ? `${MONTHS[Number(s.slice(5, 7)) - 1]} ${Number(s.slice(8, 10))}` : '');\nconst money = (n, cur) => {\n  const v = Number(n) || 0;\n  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur || CFG.currency, maximumFractionDigits: 0 }).format(v); }\n  catch { return '$' + Math.round(v).toLocaleString('en-US'); }\n};\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst slug = (s) => String(s || 'client').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'client';\n// emailMode \"demo\": nothing leaves the machine, emails land in the Mailbox table, so real addresses are shown.\n// emailMode \"real\" + testMode: every client email goes to a plus-address of your own inbox (you+acmedental@gmail.com).\nconst DEMO = CFG.emailMode === 'demo';\nconst recipient = (email, company) => {\n  if (DEMO || !CFG.testMode) return email;\n  const [user, domain] = CFG.mailbox.split('@');\n  return `${user}+${slug(company)}@${domain}`;\n};\nconst tag = (inv) => `[${inv}]`;\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\", \"even if\". Not a string of short separate sentences, and not many full stops.\n- Natural order: the situation, then the reason, then how he feels about it, then the ask.\n- Warm and direct: a quick human check-in at the start (\"Hey Rachel, hope you're doing well\"), plain everyday words, polite softeners like \"if that's okay\", \"sorry to chase you on this\", \"honestly\".\n- Fair: he admits the other side before his point (\"I totally get that things get busy, but...\").\n- He softens instead of accusing: \"it might have slipped through\", \"maybe it got buried in the inbox\".\n- He says the feeling plainly when it matters: \"I'd really appreciate it\", \"I really need this sorted\".\n- He ends with an open question or an offer to help, never a polished one-liner (\"and if anything's holding it up just tell me and I'll sort it out with you\").\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together and not in every message.\n- Never: bookish or corporate words (kindly, per my last email, please be advised, valued, leverage), em dashes, exclamation marks, emoji, or a wise-sounding closing line.`;\n\nconst b = $input.first().json.body || {};\nconst due = isDate(b.due_date) ? b.due_date : addDays(today, 14);\nconst inv = String(b.invoice_no || '').trim().toUpperCase() || `INV-${Math.floor(1000 + Math.random() * 9000)}`;\nconst firstStep = addDays(due, -3) <= today ? today : addDays(due, -3);\nreturn [{ json: {\n  invoice_no: inv.startsWith('INV-') ? inv : `INV-${inv}`,\n  client_company: String(b.client_company || 'New client').trim(),\n  client_name: String(b.client_name || '').trim(),\n  client_email: String(b.client_email || '').trim(),\n  amount: Number(String(b.amount || '0').replace(/[^0-9.]/g, '')) || 0,\n  currency: CFG.currency, issue_date: today, due_date: due,\n  invoice_link: String(b.invoice_link || '').trim() || CFG.paymentLink,\n  status: 'unpaid', promised_date: '', reminders_sent: 0, next_action: firstStep, last_update: today, paid_date: '',\n  ai_note: `Got it, I'll ${firstStep === today ? 'send the first reminder on the next run' : 'send a friendly heads-up on ' + fmtDate(firstStep)} and take it from there`,\n} }];\n\n"
+      },
+      "id": "4435e364-4d43-41c8-80ee-3eda93b63c47"
+    },
+    {
+      "name": "Save invoice",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Invoices"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null
+        },
+        "options": {}
+      },
+      "id": "2ed5bd17-44f9-4c59-b45e-9ba25459db14"
+    },
+    {
+      "name": "Created entry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Northlight Studio\",\"ownerName\":\"Sam\",\"mailbox\":\"billing@northlight.studio\",\"emailMode\":\"demo\",\"testMode\":true,\"currency\":\"USD\",\"paymentLink\":\"https://pay.northlight.studio/invoices\",\"claudeModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst isDate = (s) => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(s || ''));\nconst toUTC = (s) => { const [y, m, d] = String(s).split('-').map(Number); return Date.UTC(y, m - 1, d); };\nconst addDays = (s, n) => new Date(toUTC(s) + n * 86400000).toISOString().slice(0, 10);\nconst daysBetween = (a, b) => Math.round((toUTC(b) - toUTC(a)) / 86400000); // b - a\nconst weekday = (s) => DAYS[new Date(toUTC(s)).getUTCDay()];\nconst fmtDate = (s) => (isDate(s) ? `${MONTHS[Number(s.slice(5, 7)) - 1]} ${Number(s.slice(8, 10))}` : '');\nconst money = (n, cur) => {\n  const v = Number(n) || 0;\n  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur || CFG.currency, maximumFractionDigits: 0 }).format(v); }\n  catch { return '$' + Math.round(v).toLocaleString('en-US'); }\n};\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst slug = (s) => String(s || 'client').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'client';\n// emailMode \"demo\": nothing leaves the machine, emails land in the Mailbox table, so real addresses are shown.\n// emailMode \"real\" + testMode: every client email goes to a plus-address of your own inbox (you+acmedental@gmail.com).\nconst DEMO = CFG.emailMode === 'demo';\nconst recipient = (email, company) => {\n  if (DEMO || !CFG.testMode) return email;\n  const [user, domain] = CFG.mailbox.split('@');\n  return `${user}+${slug(company)}@${domain}`;\n};\nconst tag = (inv) => `[${inv}]`;\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\", \"even if\". Not a string of short separate sentences, and not many full stops.\n- Natural order: the situation, then the reason, then how he feels about it, then the ask.\n- Warm and direct: a quick human check-in at the start (\"Hey Rachel, hope you're doing well\"), plain everyday words, polite softeners like \"if that's okay\", \"sorry to chase you on this\", \"honestly\".\n- Fair: he admits the other side before his point (\"I totally get that things get busy, but...\").\n- He softens instead of accusing: \"it might have slipped through\", \"maybe it got buried in the inbox\".\n- He says the feeling plainly when it matters: \"I'd really appreciate it\", \"I really need this sorted\".\n- He ends with an open question or an offer to help, never a polished one-liner (\"and if anything's holding it up just tell me and I'll sort it out with you\").\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together and not in every message.\n- Never: bookish or corporate words (kindly, per my last email, please be advised, valued, leverage), em dashes, exclamation marks, emoji, or a wise-sounding closing line.`;\n\nconst r = $('Build invoice').first().json;\nreturn [{ json: { invoice_no: r.invoice_no, at: nowIso, kind: 'created', title: 'Invoice added', body: `${money(r.amount, r.currency)} due ${fmtDate(r.due_date)}`, ai_note: r.ai_note } }];\n\n"
+      },
+      "id": "aaac6e0f-6380-40f4-8d3a-1d29bf139008"
+    },
+    {
+      "name": "Log created",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        200
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Activity"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null
+        },
+        "options": {}
+      },
+      "id": "763ba05b-d413-4397-b59d-5d0e6b7acb02"
+    },
+    {
+      "name": "Back to dashboard (add)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1200,
+        200
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Redirecting…",
+        "options": {
+          "responseCode": 303,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Location",
+                "value": "/webhook/invoices?done=add"
+              }
+            ]
+          }
+        }
+      },
+      "id": "1bcdb0fa-ccfd-425c-9edf-bef15987470d"
+    },
+    {
+      "name": "Mark paid",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        400
+      ],
+      "webhookId": "6a1f2c3d-4b5e-4f60-8a71-92b3c4d5e613",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "invoices-paid",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "6571ee4d-cc53-4025-b42b-f10a77a828e1"
+    },
+    {
+      "name": "Paid fields",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        400
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Northlight Studio\",\"ownerName\":\"Sam\",\"mailbox\":\"billing@northlight.studio\",\"emailMode\":\"demo\",\"testMode\":true,\"currency\":\"USD\",\"paymentLink\":\"https://pay.northlight.studio/invoices\",\"claudeModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst isDate = (s) => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(s || ''));\nconst toUTC = (s) => { const [y, m, d] = String(s).split('-').map(Number); return Date.UTC(y, m - 1, d); };\nconst addDays = (s, n) => new Date(toUTC(s) + n * 86400000).toISOString().slice(0, 10);\nconst daysBetween = (a, b) => Math.round((toUTC(b) - toUTC(a)) / 86400000); // b - a\nconst weekday = (s) => DAYS[new Date(toUTC(s)).getUTCDay()];\nconst fmtDate = (s) => (isDate(s) ? `${MONTHS[Number(s.slice(5, 7)) - 1]} ${Number(s.slice(8, 10))}` : '');\nconst money = (n, cur) => {\n  const v = Number(n) || 0;\n  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur || CFG.currency, maximumFractionDigits: 0 }).format(v); }\n  catch { return '$' + Math.round(v).toLocaleString('en-US'); }\n};\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst slug = (s) => String(s || 'client').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'client';\n// emailMode \"demo\": nothing leaves the machine, emails land in the Mailbox table, so real addresses are shown.\n// emailMode \"real\" + testMode: every client email goes to a plus-address of your own inbox (you+acmedental@gmail.com).\nconst DEMO = CFG.emailMode === 'demo';\nconst recipient = (email, company) => {\n  if (DEMO || !CFG.testMode) return email;\n  const [user, domain] = CFG.mailbox.split('@');\n  return `${user}+${slug(company)}@${domain}`;\n};\nconst tag = (inv) => `[${inv}]`;\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\", \"even if\". Not a string of short separate sentences, and not many full stops.\n- Natural order: the situation, then the reason, then how he feels about it, then the ask.\n- Warm and direct: a quick human check-in at the start (\"Hey Rachel, hope you're doing well\"), plain everyday words, polite softeners like \"if that's okay\", \"sorry to chase you on this\", \"honestly\".\n- Fair: he admits the other side before his point (\"I totally get that things get busy, but...\").\n- He softens instead of accusing: \"it might have slipped through\", \"maybe it got buried in the inbox\".\n- He says the feeling plainly when it matters: \"I'd really appreciate it\", \"I really need this sorted\".\n- He ends with an open question or an offer to help, never a polished one-liner (\"and if anything's holding it up just tell me and I'll sort it out with you\").\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together and not in every message.\n- Never: bookish or corporate words (kindly, per my last email, please be advised, valued, leverage), em dashes, exclamation marks, emoji, or a wise-sounding closing line.`;\n\nconst b = $input.first().json.body || {};\nreturn [{ json: { invoice_no: String(b.invoice_no || ''), status: 'paid', paid_date: today, next_action: '', last_update: today, ai_note: \"You marked it paid, so it's done and I stopped all the reminders\" } }];\n\n"
+      },
+      "id": "5e72a15c-8699-426d-aa69-0481d424cfcd"
+    },
+    {
+      "name": "Update invoice",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        400
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Invoices"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "invoice_no",
+              "condition": "eq",
+              "keyValue": "={{ $json.invoice_no }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null
+        },
+        "options": {}
+      },
+      "id": "a96ae204-ae36-4827-badf-65055fd022df"
+    },
+    {
+      "name": "Paid entry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        400
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Northlight Studio\",\"ownerName\":\"Sam\",\"mailbox\":\"billing@northlight.studio\",\"emailMode\":\"demo\",\"testMode\":true,\"currency\":\"USD\",\"paymentLink\":\"https://pay.northlight.studio/invoices\",\"claudeModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst isDate = (s) => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(s || ''));\nconst toUTC = (s) => { const [y, m, d] = String(s).split('-').map(Number); return Date.UTC(y, m - 1, d); };\nconst addDays = (s, n) => new Date(toUTC(s) + n * 86400000).toISOString().slice(0, 10);\nconst daysBetween = (a, b) => Math.round((toUTC(b) - toUTC(a)) / 86400000); // b - a\nconst weekday = (s) => DAYS[new Date(toUTC(s)).getUTCDay()];\nconst fmtDate = (s) => (isDate(s) ? `${MONTHS[Number(s.slice(5, 7)) - 1]} ${Number(s.slice(8, 10))}` : '');\nconst money = (n, cur) => {\n  const v = Number(n) || 0;\n  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur || CFG.currency, maximumFractionDigits: 0 }).format(v); }\n  catch { return '$' + Math.round(v).toLocaleString('en-US'); }\n};\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst slug = (s) => String(s || 'client').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'client';\n// emailMode \"demo\": nothing leaves the machine, emails land in the Mailbox table, so real addresses are shown.\n// emailMode \"real\" + testMode: every client email goes to a plus-address of your own inbox (you+acmedental@gmail.com).\nconst DEMO = CFG.emailMode === 'demo';\nconst recipient = (email, company) => {\n  if (DEMO || !CFG.testMode) return email;\n  const [user, domain] = CFG.mailbox.split('@');\n  return `${user}+${slug(company)}@${domain}`;\n};\nconst tag = (inv) => `[${inv}]`;\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\", \"even if\". Not a string of short separate sentences, and not many full stops.\n- Natural order: the situation, then the reason, then how he feels about it, then the ask.\n- Warm and direct: a quick human check-in at the start (\"Hey Rachel, hope you're doing well\"), plain everyday words, polite softeners like \"if that's okay\", \"sorry to chase you on this\", \"honestly\".\n- Fair: he admits the other side before his point (\"I totally get that things get busy, but...\").\n- He softens instead of accusing: \"it might have slipped through\", \"maybe it got buried in the inbox\".\n- He says the feeling plainly when it matters: \"I'd really appreciate it\", \"I really need this sorted\".\n- He ends with an open question or an offer to help, never a polished one-liner (\"and if anything's holding it up just tell me and I'll sort it out with you\").\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together and not in every message.\n- Never: bookish or corporate words (kindly, per my last email, please be advised, valued, leverage), em dashes, exclamation marks, emoji, or a wise-sounding closing line.`;\n\nconst r = $('Paid fields').first().json;\nreturn [{ json: { invoice_no: r.invoice_no, at: nowIso, kind: 'paid', title: 'Marked as paid', body: 'You confirmed the payment came in.', ai_note: '' } }];\n\n"
+      },
+      "id": "dfdd809d-348d-4bfa-b062-9cc2a8fdd012"
+    },
+    {
+      "name": "Log paid",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        400
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Activity"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": null
+        },
+        "options": {}
+      },
+      "id": "25e1baeb-3cea-4450-8244-8bf49a547f4b"
+    },
+    {
+      "name": "Back to dashboard (paid)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1200,
+        400
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Redirecting…",
+        "options": {
+          "responseCode": 303,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Location",
+                "value": "/webhook/invoices?done=paid"
+              }
+            ]
+          }
+        }
+      },
+      "id": "1f1c93bc-7d90-4631-bc83-c4ffb1d4ca61"
+    },
+    {
+      "name": "Run chaser now",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        600
+      ],
+      "webhookId": "6a1f2c3d-4b5e-4f60-8a71-92b3c4d5e614",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "invoices-run",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "3ee24f2e-6b68-47e8-9a2b-509fcf448156"
+    },
+    {
+      "name": "Start the chaser",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        600
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true,
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:5678/webhook/invoice-chaser-run",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "adf2e26a-0cf7-4854-92a4-8be1fbc790a8"
+    },
+    {
+      "name": "Back to dashboard (run)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        480,
+        600
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "Redirecting…",
+        "options": {
+          "responseCode": 303,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Location",
+                "value": "/webhook/invoices?done=run"
+              }
+            ]
+          }
+        }
+      },
+      "id": "0857dfd7-f0c4-4870-872d-6c20cfbcb0aa"
+    },
+    {
+      "name": "Inbox page",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        800
+      ],
+      "webhookId": "6a1f2c3d-4b5e-4f60-8a71-92b3c4d5e615",
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "inbox",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "8a960040-0d0d-4da6-b148-03cf8f0f4602"
+    },
+    {
+      "name": "Get invoices for inbox",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        800
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Invoices"
+        },
+        "matchType": "anyCondition",
+        "filters": {},
+        "returnAll": true
+      },
+      "id": "d8b40bb6-0afa-4fae-8717-9600d702ec6b"
+    },
+    {
+      "name": "Get mailbox",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        480,
+        800
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Mailbox"
+        },
+        "matchType": "anyCondition",
+        "filters": {},
+        "returnAll": true
+      },
+      "id": "6843daf8-72af-4e0f-a0d8-ad8d1e8bb2f3"
+    },
+    {
+      "name": "Get activity for inbox",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        800
+      ],
+      "executeOnce": true,
+      "alwaysOutputData": true,
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Activity"
+        },
+        "matchType": "anyCondition",
+        "filters": {},
+        "returnAll": true
+      },
+      "id": "015c8596-a55b-4382-8234-02499af49be4"
+    },
+    {
+      "name": "Render inbox",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        800
+      ],
+      "parameters": {
+        "jsCode": "const CFG = {\"business\":\"Northlight Studio\",\"ownerName\":\"Sam\",\"mailbox\":\"billing@northlight.studio\",\"emailMode\":\"demo\",\"testMode\":true,\"currency\":\"USD\",\"paymentLink\":\"https://pay.northlight.studio/invoices\",\"claudeModel\":\"claude-opus-5-5\"};\n// Shared helpers, added to the top of every Code node by build.js. CFG comes from config.json.\nconst today = (typeof $now !== 'undefined' && $now && $now.toISODate) ? $now.toISODate() : new Date().toISOString().slice(0, 10);\nconst nowIso = new Date().toISOString();\nconst MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];\nconst DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];\nconst isDate = (s) => /^\\d{4}-\\d{2}-\\d{2}$/.test(String(s || ''));\nconst toUTC = (s) => { const [y, m, d] = String(s).split('-').map(Number); return Date.UTC(y, m - 1, d); };\nconst addDays = (s, n) => new Date(toUTC(s) + n * 86400000).toISOString().slice(0, 10);\nconst daysBetween = (a, b) => Math.round((toUTC(b) - toUTC(a)) / 86400000); // b - a\nconst weekday = (s) => DAYS[new Date(toUTC(s)).getUTCDay()];\nconst fmtDate = (s) => (isDate(s) ? `${MONTHS[Number(s.slice(5, 7)) - 1]} ${Number(s.slice(8, 10))}` : '');\nconst money = (n, cur) => {\n  const v = Number(n) || 0;\n  try { return new Intl.NumberFormat('en-US', { style: 'currency', currency: cur || CFG.currency, maximumFractionDigits: 0 }).format(v); }\n  catch { return '$' + Math.round(v).toLocaleString('en-US'); }\n};\nconst esc = (s) => String(s ?? '').replace(/[&<>\"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]));\nconst slug = (s) => String(s || 'client').toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'client';\n// emailMode \"demo\": nothing leaves the machine, emails land in the Mailbox table, so real addresses are shown.\n// emailMode \"real\" + testMode: every client email goes to a plus-address of your own inbox (you+acmedental@gmail.com).\nconst DEMO = CFG.emailMode === 'demo';\nconst recipient = (email, company) => {\n  if (DEMO || !CFG.testMode) return email;\n  const [user, domain] = CFG.mailbox.split('@');\n  return `${user}+${slug(company)}@${domain}`;\n};\nconst tag = (inv) => `[${inv}]`;\n\n// The owner's own voice, carried into English. Every prompt that writes text includes this.\nconst VOICE = `Write in ${CFG.ownerName}'s own voice, in English. This is how he writes:\n- Connected, the way he talks: one flowing thought where each sentence comes out of the one before, joined with \"and\", \"but\", \"so\", \"because\", \"even if\". Not a string of short separate sentences, and not many full stops.\n- Natural order: the situation, then the reason, then how he feels about it, then the ask.\n- Warm and direct: a quick human check-in at the start (\"Hey Rachel, hope you're doing well\"), plain everyday words, polite softeners like \"if that's okay\", \"sorry to chase you on this\", \"honestly\".\n- Fair: he admits the other side before his point (\"I totally get that things get busy, but...\").\n- He softens instead of accusing: \"it might have slipped through\", \"maybe it got buried in the inbox\".\n- He says the feeling plainly when it matters: \"I'd really appreciate it\", \"I really need this sorted\".\n- He ends with an open question or an offer to help, never a polished one-liner (\"and if anything's holding it up just tell me and I'll sort it out with you\").\n- Words like \"really\", \"honestly\", \"totally\" show up now and then, never all together and not in every message.\n- Never: bookish or corporate words (kindly, per my last email, please be advised, valued, leverage), em dashes, exclamation marks, emoji, or a wise-sounding closing line.`;\n\n// Renders the Client inbox: every email the agent sent, and a box to reply as the client.\r\n// A reply goes through the same reply reader a real email would.\r\nconst invoices = $('Get invoices for inbox').all().map((i) => i.json).filter((r) => r.invoice_no);\r\nconst mail = $('Get mailbox').all().map((i) => i.json).filter((m) => m.invoice_no);\r\nconst acts = $('Get activity for inbox').all().map((i) => i.json).filter((a) => a.invoice_no);\r\nconst q = ($('Inbox page').first().json.query) || {};\r\n\r\nconst STATUS = {\r\n  unpaid: ['Chasing', 'chasing'], promised: ['Promised', 'promised'], check_payment: ['Check payment', 'check'],\r\n  disputed: ['Disputed', 'disputed'], needs_you: ['Needs you', 'needs'], escalated: ['Call client', 'disputed'], paid: ['Paid', 'paid'],\r\n};\r\nconst pill = (r) => { const [l, c] = STATUS[r?.status] || ['', 'chasing']; return l ? `<span class=\"pill ${c}\"><i></i>${esc(l)}</span>` : ''; };\r\nconst when = (at) => `${fmtDate(String(at).slice(0, 10))} · ${String(at).slice(11, 16)}`;\r\nconst byTime = (a, b) => String(a.at).localeCompare(String(b.at));\r\n\r\n// Conversations, newest first.\r\nconst threads = [...new Set(mail.map((m) => m.invoice_no))].map((no) => {\r\n  const msgs = mail.filter((m) => m.invoice_no === no).sort(byTime);\r\n  return { no, msgs, last: msgs[msgs.length - 1], inv: invoices.find((r) => r.invoice_no === no) };\r\n}).sort((a, b) => String(b.last.at).localeCompare(String(a.last.at)));\r\n\r\nconst current = threads.find((t) => t.no === q.c) || threads[0];\r\n\r\n// Is the agent still reading the newest client reply? The page checks this quietly in the background\r\n// (script at the bottom), so there's no visible reload. Without JavaScript it falls back to a slow refresh.\r\nlet reading = false;\r\nlet insCount = 0;\r\nif (current) {\r\n  insCount = current.msgs.filter((m) => m.direction === 'in').length;\r\n  const handled = acts.filter((a) => a.invoice_no === current.no && a.kind === 'reply').length;\r\n  reading = insCount > handled;\r\n}\r\nconst refresh = reading ? `<noscript><meta http-equiv=\"refresh\" content=\"4\"></noscript>` : '';\r\n\r\nconst list = threads.map((t) => {\r\n  const who = t.inv ? t.inv.client_company : t.no;\r\n  const last = t.last;\r\n  const snippet = String(last.body || '').replace(/\\s+/g, ' ').slice(0, 90);\r\n  const from = last.direction === 'in' ? last.from_name : last.direction === 'owner' ? 'Sent to you' : 'You';\r\n  return `<a class=\"thread ${current && t.no === current.no ? 'on' : ''}\" href=\"/webhook/inbox?c=${esc(t.no)}\">\r\n    <div class=\"t-top\"><b>${esc(who)}</b><time>${esc(fmtDate(String(last.at).slice(0, 10)))}</time></div>\r\n    <div class=\"t-sub\">${esc(String(last.subject).replace(/\\s*\\[INV-\\d+\\]/, ''))}</div>\r\n    <div class=\"t-snip\"><span>${esc(from)}:</span> ${esc(snippet)}</div>\r\n    <div class=\"t-foot\">${pill(t.inv)}<span class=\"mono\">${esc(t.no)}</span></div>\r\n  </a>`;\r\n}).join('') || \"<p class=\\\"empty\\\">No emails yet, so hit Run chaser now on the dashboard and the first reminders will land here.</p>\";\r\n\r\nlet thread = '<p class=\"empty big\">Pick a conversation on the left.</p>';\r\nif (current) {\r\n  const inv = current.inv || {};\r\n  const replyNotes = acts.filter((a) => a.invoice_no === current.no && a.kind === 'reply').sort(byTime);\r\n  let k = 0;\r\n  const bubbles = current.msgs.map((m) => {\r\n    if (m.direction === 'owner') {\r\n      return `<div class=\"msg owner\"><div class=\"meta\"><b>Sent to you</b><time>${esc(when(m.at))}</time></div><div class=\"subj\">${esc(m.subject)}</div><p>${esc(m.body)}</p></div>`;\r\n    }\r\n    const mine = m.direction === 'out';\r\n    let chip = '';\r\n    if (!mine) {\r\n      const note = replyNotes[k++];\r\n      chip = note ? `<div class=\"agent\"><span>Agent</span>${esc(note.ai_note)}</div>` : (reading ? '<div class=\"agent thinking\"><span>Agent</span>Reading this reply now…</div>' : '');\r\n    }\r\n    return `<div class=\"msg ${mine ? 'out' : 'in'}\">\r\n      <div class=\"meta\"><b>${esc(mine ? `${CFG.ownerName} · ${CFG.business}` : m.from_name)}</b><span class=\"to\">to ${esc(m.to_addr)}</span><time>${esc(when(m.at))}</time></div>\r\n      <div class=\"subj\">${esc(m.subject)}</div>\r\n      <p>${esc(m.body)}</p>\r\n    </div>${chip}`;\r\n  }).join('');\r\n\r\n  const lastSubject = [...current.msgs].reverse().find((m) => m.direction !== 'owner')?.subject || `Invoice ${current.no}`;\r\n  const first = (inv.client_name || '').split(' ')[0] || 'the client';\r\n  const samples = [\r\n    \"Sorry about that, we'll pay it this Friday.\",\r\n    'We already paid this last week, can you check on your side?',\r\n    \"Can you resend the invoice? I can't find it anywhere.\",\r\n    'The amount looks wrong, we agreed on less than this for the project.',\r\n    'Is there any discount if we pay today?',\r\n  ];\r\n  thread = `\r\n    <header class=\"th-head\">\r\n      <div><h1>${esc(inv.client_company || current.no)}</h1>\r\n        <div class=\"muted\">${esc(inv.client_name || '')}${inv.client_email ? ' · ' + esc(inv.client_email) : ''}</div></div>\r\n      <div class=\"th-right\"><span class=\"mono amt\">${esc(money(inv.amount, inv.currency))}</span>${pill(inv)}<a class=\"link\" href=\"/webhook/invoices\">Dashboard</a></div>\r\n    </header>\r\n    ${inv.ai_note ? `<div class=\"note\"><span class=\"tag\">Agent</span>${esc(inv.ai_note)}</div>` : ''}\r\n    ${reading ? '<div class=\"reading\"><i></i>The agent is reading the reply and deciding what to do, this usually takes a few seconds</div>' : ''}\r\n    <div class=\"msgs\">${bubbles}</div>\r\n    ${inv.status === 'paid' ? '<p class=\"empty\">This invoice is paid, so the conversation is closed.</p>' : `\r\n    <form class=\"composer\" method=\"post\" action=\"/webhook/inbox-reply\">\r\n      <div class=\"c-head\">Reply as <b>${esc(inv.client_name || 'the client')}</b> from ${esc(inv.client_company || '')} <span class=\"muted\">· try being ${esc(first)} and see what the agent does</span></div>\r\n      <div class=\"chips\">${samples.map((s, i) => `<button type=\"button\" class=\"chip\" data-t=\"${esc(s)}\">${esc(s)}</button>`).join('')}</div>\r\n      <input type=\"hidden\" name=\"invoice_no\" value=\"${esc(current.no)}\">\r\n      <input type=\"hidden\" name=\"subject\" value=\"${esc(lastSubject)}\">\r\n      <input type=\"hidden\" name=\"from_name\" value=\"${esc(inv.client_name || inv.client_company || 'Client')}\">\r\n      <input type=\"hidden\" name=\"from_email\" value=\"${esc(inv.client_email || '')}\">\r\n      <label for=\"reply-text\" class=\"sr\">Reply text</label>\r\n      <textarea id=\"reply-text\" name=\"text\" required rows=\"4\" placeholder=\"Write what ${esc(first)} would say…\"></textarea>\r\n      <div class=\"c-foot\"><span class=\"muted small\">This goes through the exact same steps a real email reply would</span><button class=\"btn\" type=\"submit\">Send as ${esc(first)}</button></div>\r\n    </form>`}`;\r\n}\r\n\r\nconst html = `<!doctype html>\r\n<html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">${refresh}\r\n<title>Client inbox · ${esc(CFG.business)}</title>\r\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\r\n<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap\">\r\n<style>\r\n/* Layout: an email client. Conversations on the left, the thread and the client's reply box on the right. */\r\n:root{--bg:#F3F4F6;--surface:#fff;--ink:#0E1525;--muted:#5F6779;--line:#E2E5EB;--soft:#F7F8FA;--money:#0B7A5C;\r\n  --chasing:#3A5A8C;--chasing-soft:#E6EDF7;--promised:#A86A0F;--promised-soft:#FCF1DD;--check:#0B7486;--check-soft:#DFF2F5;\r\n  --disputed:#C0392B;--disputed-soft:#FBE6E3;--needs:#6A4BD4;--needs-soft:#EEEAFD;--paid:#0B7A5C;--paid-soft:#E2F3EC;\r\n  --sans:\"Geist\",\"Segoe UI\",system-ui,sans-serif;--mono:\"Geist Mono\",ui-monospace,Consolas,monospace}\r\n*{box-sizing:border-box}\r\nbody{margin:0;background:var(--bg);color:var(--ink);font:14px/1.55 var(--sans);-webkit-font-smoothing:antialiased}\r\n.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}.muted{color:var(--muted)}.small{font-size:12px}\r\n.sr{position:absolute;left:-9999px}\r\n.top{background:var(--ink);color:#fff}\r\n.top .in{max-width:1240px;margin:0 auto;padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}\r\n.brand{display:flex;gap:12px;align-items:center}.mark{width:34px;height:34px;border-radius:9px;background:var(--money);display:grid;place-items:center;font-weight:700}\r\n.brand b{display:block;font-size:15px}.brand small{color:#A9B1C3;font-size:12px}\r\n.btn{border:0;border-radius:9px;padding:9px 16px;font:600 14px var(--sans);cursor:pointer;background:var(--ink);color:#fff;text-decoration:none;display:inline-flex}\r\n.top .btn{background:#fff;color:var(--ink)}\r\n.btn:focus-visible,.chip:focus-visible,textarea:focus-visible,.thread:focus-visible{outline:2px solid var(--chasing);outline-offset:2px}\r\n.wrap{max-width:1240px;margin:18px auto 40px;padding:0 20px;display:grid;grid-template-columns:330px minmax(0,1fr);gap:16px}\r\n.list,.pane{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}\r\n.list h2{margin:0;padding:14px 16px;font-size:13px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}\r\n.thread{display:block;padding:12px 16px;border-bottom:1px solid var(--line);color:inherit;text-decoration:none}\r\n.thread:hover{background:var(--soft)}.thread.on{background:var(--chasing-soft);box-shadow:inset 3px 0 0 var(--chasing)}\r\n.t-top{display:flex;justify-content:space-between;gap:8px}.t-top time{font:12px var(--mono);color:var(--muted)}\r\n.t-sub{font-size:13px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}\r\n.t-snip{font-size:12.5px;color:var(--muted);margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}\r\n.t-snip span{color:var(--ink);font-weight:500}\r\n.t-foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px;font-size:12px;color:var(--muted)}\r\n.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;white-space:nowrap}\r\n.pill i{width:6px;height:6px;border-radius:50%;background:currentColor}\r\n.pill.chasing{background:var(--chasing-soft);color:var(--chasing)}.pill.promised{background:var(--promised-soft);color:var(--promised)}\r\n.pill.check{background:var(--check-soft);color:var(--check)}.pill.disputed{background:var(--disputed-soft);color:var(--disputed)}\r\n.pill.needs{background:var(--needs-soft);color:var(--needs)}.pill.paid{background:var(--paid-soft);color:var(--paid)}\r\n.pane{padding:18px 20px;display:grid;gap:14px;align-content:start}\r\n.th-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start}\r\n.th-head h1{margin:0;font-size:20px;letter-spacing:-.02em}\r\n.th-right{display:flex;gap:10px;align-items:center}.amt{font-weight:600;font-size:15px}\r\n.link{color:var(--chasing);font-size:13px}\r\n.note,.reading{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:flex-start;background:var(--soft)}\r\n.tag,.agent span{font:600 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;background:var(--ink);color:#fff;border-radius:5px;padding:2px 6px;flex:none;margin-top:2px}\r\n.reading{background:var(--promised-soft);border-color:#F1D9AE;color:#6B4708;font-weight:500;align-items:center}\r\n.reading i{width:14px;height:14px;border-radius:50%;border:2px solid currentColor;border-top-color:transparent;animation:spin .8s linear infinite;flex:none}\r\n@keyframes spin{to{transform:rotate(360deg)}}\r\n.msgs{display:grid;gap:10px}\r\n.msg{border:1px solid var(--line);border-radius:12px;padding:12px 14px;max-width:88%;min-width:0}\r\n.msg.out{justify-self:end;background:#F4F7FC;border-color:#D9E2F1}\r\n.msg.in{justify-self:start;background:var(--surface)}\r\n.msg.owner{justify-self:stretch;max-width:none;background:var(--needs-soft);border-color:#D9D0FA}\r\n.meta{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:12.5px}\r\n.meta time{margin-left:auto;font:12px var(--mono);color:var(--muted)}.meta .to{color:var(--muted)}\r\n.subj{font-weight:600;margin-top:4px}\r\n.msg p{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;color:#2B3345}\r\n.agent{justify-self:start;display:flex;gap:8px;align-items:flex-start;font-size:13px;font-weight:500;max-width:88%;margin:-2px 0 4px 12px}\r\n.agent.thinking{color:var(--promised)}\r\n.composer{border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;gap:10px;background:var(--soft)}\r\n.c-head{font-size:13px}\r\n.chips{display:flex;flex-wrap:wrap;gap:6px}\r\n.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 11px;font:12.5px var(--sans);cursor:pointer;color:var(--ink)}\r\n.chip:hover{border-color:var(--chasing);color:var(--chasing)}\r\ntextarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font:14px/1.5 var(--sans);resize:vertical;background:var(--surface);color:var(--ink)}\r\n.c-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}\r\n.empty{color:var(--muted);padding:14px 16px;margin:0}.empty.big{padding:40px;text-align:center}\r\n.fresh{animation:fadeUp .45s ease both}\r\n@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}\r\n.flash{animation:flash 1.6s ease}\r\n@keyframes flash{0%{background:#FFF4D6;border-color:#F1D9AE}100%{background:var(--soft);border-color:var(--line)}}\r\n.dots:after{content:\"\";display:inline-block;width:1.2em;text-align:left;animation:dots 1.2s steps(4) infinite}\r\n@keyframes dots{0%{content:\"\"}25%{content:\".\"}50%{content:\"..\"}75%{content:\"...\"}}\r\n.composer.busy{opacity:.6}\r\n@media (max-width:900px){.wrap{grid-template-columns:1fr}.msg,.agent{max-width:100%}}\r\n@media (max-width:480px){.wrap{padding:0 16px}.pane{padding:14px}}\r\n@media (prefers-reduced-motion:reduce){.reading i,.fresh,.flash,.dots:after{animation:none}}\r\n</style></head>\r\n<body>\r\n<header class=\"top\"><div class=\"in\">\r\n  <div class=\"brand\"><div class=\"mark\">${esc(CFG.business[0])}</div><div><b>Client inbox</b><small>Every email the agent sends lands here in demo mode, and you can answer as the client</small></div></div>\r\n  <a class=\"btn\" href=\"/webhook/invoices\">Back to dashboard</a>\r\n</div></header>\r\n<main class=\"wrap\">\r\n  <section class=\"list\"><h2>Conversations <span class=\"muted\">${threads.length}</span></h2>${list}</section>\r\n  <section class=\"pane\" data-c=\"${esc(current ? current.no : '')}\" data-ins=\"${insCount}\" data-reading=\"${reading ? 1 : 0}\">${thread}</section>\r\n</main>\r\n<script>\r\n(function () {\r\n  // Sending: the form posts normally, and n8n holds the request until the agent is done, then redirects once\r\n  // to the updated conversation. While the browser waits, the reply and a \"reading\" note show right away.\r\n  function esc(s) { return String(s).replace(/[&<>\"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#39;' }[c]; }); }\r\n  document.querySelectorAll('.chip').forEach(function (c) {\r\n    c.addEventListener('click', function () { var t = document.getElementById('reply-text'); if (t) { t.value = c.getAttribute('data-t'); t.focus(); } });\r\n  });\r\n  var form = document.querySelector('.composer');\r\n  if (form) form.addEventListener('submit', function () {\r\n    var area = form.querySelector('textarea'), text = area.value.trim(), who = form.querySelector('[name=from_name]').value;\r\n    if (!text) return;\r\n    var msgs = document.querySelector('.msgs');\r\n    msgs.insertAdjacentHTML('beforeend',\r\n      '<div class=\"msg in fresh\"><div class=\"meta\"><b>' + esc(who) + '</b><span class=\"to\">just now</span></div><p>' + esc(text) + '</p></div>' +\r\n      '<div class=\"agent thinking fresh\"><span>Agent</span><em class=\"dots\">Reading this reply and deciding what to do</em></div>');\r\n    msgs.lastElementChild.scrollIntoView({ behavior: 'smooth', block: 'center' });\r\n    // Lock the form after the browser has read its values.\r\n    setTimeout(function () { form.classList.add('busy'); form.querySelectorAll('button,textarea').forEach(function (el) { el.disabled = true; }); }, 0);\r\n  });\r\n\r\n  // Arriving back after a reply: slide in everything from the client's newest message onward.\r\n  if (/[?&]new=1/.test(location.search)) {\r\n    var items = Array.prototype.slice.call(document.querySelectorAll('.msgs > *')), from = 0;\r\n    items.forEach(function (el, i) { if (el.classList.contains('in')) from = i; });\r\n    for (var i = from; i < items.length; i++) { items[i].classList.add('fresh'); items[i].style.animationDelay = ((i - from) * 0.3) + 's'; }\r\n    var note = document.querySelector('.note'); if (note) note.classList.add('flash');\r\n    if (items[from]) items[from].scrollIntoView({ block: 'center' });\r\n    if (history.replaceState) history.replaceState(null, '', location.pathname + location.search.replace(/[?&]new=1/, '').replace(/^&/, '?'));\r\n  }\r\n})();\r\n</script>\r\n</body></html>`;\r\n\r\nreturn [{ json: { html } }];\r\n"
+      },
+      "id": "2cde91cc-276d-426b-ac3c-e66480c1b873"
+    },
+    {
+      "name": "Send inbox",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1200,
+        800
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              },
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Cache-Control",
+                "value": "no-store"
+              }
+            ]
+          }
+        }
+      },
+      "id": "353380f5-47cb-477b-8b02-5fe95383ebb2"
+    }
+  ],
+  "connections": {
+    "Dashboard page": {
+      "main": [
+        [
+          {
+            "node": "Get invoices for page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get invoices for page": {
+      "main": [
+        [
+          {
+            "node": "Get activity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get activity": {
+      "main": [
+        [
+          {
+            "node": "Render dashboard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render dashboard": {
+      "main": [
+        [
+          {
+            "node": "Send page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add invoice": {
+      "main": [
+        [
+          {
+            "node": "Build invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build invoice": {
+      "main": [
+        [
+          {
+            "node": "Save invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save invoice": {
+      "main": [
+        [
+          {
+            "node": "Created entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Created entry": {
+      "main": [
+        [
+          {
+            "node": "Log created",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log created": {
+      "main": [
+        [
+          {
+            "node": "Back to dashboard (add)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark paid": {
+      "main": [
+        [
+          {
+            "node": "Paid fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Paid fields": {
+      "main": [
+        [
+          {
+            "node": "Update invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update invoice": {
+      "main": [
+        [
+          {
+            "node": "Paid entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Paid entry": {
+      "main": [
+        [
+          {
+            "node": "Log paid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log paid": {
+      "main": [
+        [
+          {
+            "node": "Back to dashboard (paid)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run chaser now": {
+      "main": [
+        [
+          {
+            "node": "Start the chaser",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start the chaser": {
+      "main": [
+        [
+          {
+            "node": "Back to dashboard (run)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inbox page": {
+      "main": [
+        [
+          {
+            "node": "Get invoices for inbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get invoices for inbox": {
+      "main": [
+        [
+          {
+            "node": "Get mailbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get mailbox": {
+      "main": [
+        [
+          {
+            "node": "Get activity for inbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get activity for inbox": {
+      "main": [
+        [
+          {
+            "node": "Render inbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Render inbox": {
+      "main": [
+        [
+          {
+            "node": "Send inbox",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

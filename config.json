@@ -1,0 +1,18 @@
+{
+  "business": "Northlight Studio",
+  "ownerName": "Sam",
+  "mailbox": "billing@northlight.studio",
+  "emailMode": "demo",
+  "testMode": true,
+  "currency": "USD",
+  "paymentLink": "https://pay.northlight.studio/invoices",
+  "claudeModel": "claude-opus-5-5",
+  "credentials": {
+    "anthropic": {
+      "id": "",
+      "name": "Anthropic account"
+    },
+    "smtp": null,
+    "imap": null
+  }
+}
