@@ -6,7 +6,7 @@
   "testMode": true,
   "currency": "USD",
   "paymentLink": "https://pay.northlight.studio/invoices",
-  "claudeModel": "claude-opus-5-5",
+  "aiModel": "claude-opus-5-5",
   "credentials": {
     "anthropic": {
       "id": "",

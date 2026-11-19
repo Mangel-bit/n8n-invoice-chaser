@@ -1,4 +1,4 @@
-// Decides what happens for each reply. Claude only labels the reply; the actions are fixed rules here,
+// Decides what happens for each reply. The AI only labels the reply; the actions are fixed rules here,
 // so the agent can never mark an invoice paid or argue with a client on its own.
 const preps = $('Prepare AI').all().map((i) => i.json);
 const answers = $input.all().map((i) => i.json);

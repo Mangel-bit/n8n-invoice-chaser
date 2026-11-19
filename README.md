@@ -6,7 +6,7 @@ An n8n agent that chases late invoices for you. Every morning it writes each cli
 
 ## What it does
 
-- Picks every invoice that's due for a nudge and writes the email with Claude. It gets a little firmer the later the invoice is: a heads-up before the due date, then friendly, then clear, then firm, and after four reminders it stops and hands the invoice to you
+- Picks every invoice that's due for a nudge and writes the email with AI. It gets a little firmer the later the invoice is: a heads-up before the due date, then friendly, then clear, then firm, and after four reminders it stops and hands the invoice to you
 - Reads client replies and sorts them into a promise to pay, already paid, lost the invoice, a dispute, a question, or out of office
 - Decides what happens next with plain code, not the AI: pause until the promised date and check back the day after, resend the link, flag it for you, or just log it
 - Sends you a summary every Monday morning with what came in and what's still out
@@ -16,7 +16,7 @@ An n8n agent that chases late invoices for you. Every morning it writes each cli
 
 ## How it works
 
-Claude writes the emails and reads the replies, and both calls go through the HTTP Request node to the Messages API with a JSON schema, so the answer always comes back as fields the workflow can use. Everything that changes an invoice, like the next reminder date or the status, is decided afterwards in a Code node, so the AI never gets to move money or dates on its own.
+The AI writes the emails and reads the replies, and both calls go through the HTTP Request node to the Messages API with a JSON schema, so the answer always comes back as fields the workflow can use. Everything that changes an invoice, like the next reminder date or the status, is decided afterwards in a Code node, so the AI never gets to move money or dates on its own.
 
 The emails are written in the owner's voice, which is described in `nodes/_shared.js`. That's the part to change if you want it to sound like you.
 
@@ -37,7 +37,7 @@ The emails are written in the owner's voice, which is described in `nodes/_share
 You need a self-hosted n8n with Data Tables (I built it on n8n 2.48) and an Anthropic API key.
 
 1. Import the five files from `workflows/` into n8n
-2. Open the **Claude writes reminders** node in the daily chaser and the **Claude reads the reply** node in the reply reader, and pick your Anthropic credential on both
+2. Open the **AI writes reminders** node in the daily chaser and the **AI reads the reply** node in the reply reader, and pick your Anthropic credential on both
 3. Publish all five workflows
 4. Create the tables and the demo data:
    ```bash
@@ -59,7 +59,7 @@ The workflows are generated from the files in `nodes/`, so edit those and rebuil
 node build.js
 ```
 
-`config.json` holds the business name, the owner's name, the currency, the payment link, the Claude model, and the email settings.
+`config.json` holds the business name, the owner's name, the currency, the payment link, the AI model, and the email settings.
 
 ## License
 

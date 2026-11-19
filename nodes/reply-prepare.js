@@ -1,4 +1,4 @@
-// Matches each reply to its invoice and asks Claude what the client means.
+// Matches each reply to its invoice and asks the AI what the client means.
 const invoices = $('Get invoices').all().map((i) => i.json).filter((r) => r.invoice_no);
 const replies = $('Keep client replies').all().map((i) => i.json);
 
@@ -55,8 +55,8 @@ ${rep.text}
     json: {
       reply: rep,
       invoice: inv,
-      claudeBody: {
-        model: CFG.claudeModel,
+      aiBody: {
+        model: CFG.aiModel,
         max_tokens: 4000,
         system: SYSTEM,
         messages: [{ role: 'user', content }],

@@ -37,12 +37,12 @@ const update = (name, t, pos) => ({ name, type: 'n8n-nodes-base.dataTable', type
   parameters: { resource: 'row', operation: 'update', dataTableId: table(t), matchType: 'allConditions',
     filters: { conditions: [{ keyName: 'invoice_no', condition: 'eq', keyValue: '={{ $json.invoice_no }}' }] },
     columns: { mappingMode: 'autoMapInputData', value: null }, options: {} } });
-const claude = (name, pos) => ({ name, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: pos, onError: 'continueRegularOutput',
+const aiCall = (name, pos) => ({ name, type: 'n8n-nodes-base.httpRequest', typeVersion: 4.2, position: pos, onError: 'continueRegularOutput',
   // Without a credential id in config.json, n8n asks you to pick your Anthropic credential on the node after import.
   ...(CRED.anthropic && CRED.anthropic.id ? { credentials: { anthropicApi: CRED.anthropic } } : {}),
   parameters: { method: 'POST', url: 'https://api.anthropic.com/v1/messages', authentication: 'predefinedCredentialType', nodeCredentialType: 'anthropicApi',
     sendHeaders: true, headerParameters: { parameters: [{ name: 'anthropic-version', value: '2026-10-21' }, { name: 'anthropic-beta', value: 'server-side-fallback-2026-07-01' }] },
-    sendBody: true, specifyBody: 'json', jsonBody: '={{ JSON.stringify($json.claudeBody) }}',
+    sendBody: true, specifyBody: 'json', jsonBody: '={{ JSON.stringify($json.aiBody) }}',
     options: { batching: { batch: { batchSize: 3, batchInterval: 300 } }, timeout: 180000 } } });
 const email = (name, pos) => ({ name, type: 'n8n-nodes-base.emailSend', typeVersion: 2.1, position: pos, webhookId: randomUUID(),
   ...(CRED.smtp ? { credentials: { smtp: CRED.smtp } } : {}),
@@ -104,7 +104,7 @@ const chaser = wf('invChaserDaily01', 'Invoice Chaser · 1 Daily chaser', [
   webhook('Run now (from dashboard)', 'POST', 'invoice-chaser-run', 'lastNode', '6a1f2c3d-4b5e-4f60-8a71-92b3c4d5e601', at(0, 1), { responseData: 'firstEntryJson' }),
   getAll('Get invoices', 'Invoices', at(1)),
   code('Pick invoices to chase', file('chaser-pick.js'), at(2)),
-  claude('Claude writes reminders', at(3)),
+  aiCall('AI writes reminders', at(3)),
   code('Build emails', file('chaser-build.js'), at(4)),
   ...sendNodes('Send email', at(5)),
   code('Invoice updates', "return $('Build emails').all().map((i) => ({ json: i.json.update }));", at(7)),
@@ -112,7 +112,7 @@ const chaser = wf('invChaserDaily01', 'Invoice Chaser · 1 Daily chaser', [
   code('Activity entries', "return $('Build emails').all().map((i) => ({ json: i.json.activity }));", at(9)),
   insert('Log activity', 'Activity', at(10)),
 ], [['Every day 9:00', 'Get invoices'], ['Run now (from dashboard)', 'Get invoices'],
-  ...chain('Get invoices', 'Pick invoices to chase', 'Claude writes reminders', 'Build emails', ...sendChain('Send email'), 'Invoice updates', 'Update invoices', 'Activity entries', 'Log activity')]);
+  ...chain('Get invoices', 'Pick invoices to chase', 'AI writes reminders', 'Build emails', ...sendChain('Send email'), 'Invoice updates', 'Update invoices', 'Activity entries', 'Log activity')]);
 
 // ---------- 2. Reply reader ----------
 // Two ways in: a real email (IMAP, real mode only) or a reply typed in the Client inbox. Both take the same path.
@@ -137,7 +137,7 @@ const replies = wf('invChaserReply01', 'Invoice Chaser · 2 Reply reader', [
   code('Keep client replies', file('reply-keep.js'), at(5)),
   getAll('Get invoices', 'Invoices', at(6)),
   code('Prepare AI', file('reply-prepare.js'), at(7)),
-  claude('Claude reads the reply', at(8)),
+  aiCall('AI reads the reply', at(8)),
   code('Decide', file('reply-decide.js'), at(9)),
   code('Invoice fields', 'return $input.all().map((i) => ({ json: i.json.fields }));', at(10)),
   update('Update invoices', 'Invoices', at(11)),
@@ -148,7 +148,7 @@ const replies = wf('invChaserReply01', 'Invoice Chaser · 2 Reply reader', [
 ], [
   ...(DEMO ? [] : [['New email', 'Keep client replies']]),
   ...chain('Reply from client inbox', 'Client message', 'Save client message', 'As an incoming email', 'Keep client replies'),
-  ...chain('Keep client replies', 'Get invoices', 'Prepare AI', 'Claude reads the reply', 'Decide', 'Invoice fields', 'Update invoices', 'Activity entries', 'Log activity', 'Emails to send', ...sendChain('Send email')),
+  ...chain('Keep client replies', 'Get invoices', 'Prepare AI', 'AI reads the reply', 'Decide', 'Invoice fields', 'Update invoices', 'Activity entries', 'Log activity', 'Emails to send', ...sendChain('Send email')),
 ]);
 
 // ---------- 3. Dashboard and Client inbox ----------

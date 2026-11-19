@@ -1,4 +1,4 @@
-// Picks the invoices whose next step is due today and asks Claude to write each email.
+// Picks the invoices whose next step is due today and asks the AI to write each email.
 const rows = $input.all().map((i) => i.json).filter((r) => r.invoice_no);
 
 const TONE = {
@@ -62,8 +62,8 @@ Stage and tone: ${TONE[stage]}`;
       invoice: r,
       stage,
       late,
-      claudeBody: {
-        model: CFG.claudeModel,
+      aiBody: {
+        model: CFG.aiModel,
         max_tokens: 4000,
         system: SYSTEM,
         messages: [{ role: 'user', content: facts }],

@@ -1,5 +1,5 @@
-// Turns Claude's drafts into emails, plus the invoice update and activity entry for each.
-// If Claude fails, a plain template is used so a reminder is never skipped.
+// Turns the AI's drafts into emails, plus the invoice update and activity entry for each.
+// If the AI fails, a plain template is used so a reminder is never skipped.
 const picks = $('Pick invoices to chase').all();
 const answers = $input.all();
 
@@ -60,7 +60,7 @@ return picks.map((p, i) => {
         kind: escalate ? 'alert' : 'sent',
         title: escalate ? 'Flagged for you, no payment after all the reminders' : subject,
         body: draft.body,
-        ai_note: `${ai ? 'Written by Claude' : 'Used the backup template because the AI was down'} · ${STAGE_LABEL[stage]} tone${CFG.testMode && !DEMO && !escalate ? ' · test mode: sent to ' + to : ''}`,
+        ai_note: `${ai ? 'Written by AI' : 'Used the backup template because the AI was down'} · ${STAGE_LABEL[stage]} tone${CFG.testMode && !DEMO && !escalate ? ' · test mode: sent to ' + to : ''}`,
       },
     },
   };
